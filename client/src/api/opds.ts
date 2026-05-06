@@ -60,3 +60,12 @@ export const browseSource = (id: string, url?: string) => {
 
 export const importEntry = (id: string, href: string, title?: string) =>
   apiJson<{ jobId: string }>(`/api/opds/sources/${id}/import`, "POST", { href, title });
+
+/**
+ * Builds a same-origin URL that proxies an OPDS asset (typically a cover
+ * image) through our server. The browser can't attach the source's stored
+ * basic-auth credentials to a direct <img src=upstream>, and an upstream
+ * 401 raises a native auth prompt — proxying avoids both.
+ */
+export const sourceAssetUrl = (sourceId: string, href: string) =>
+  `/api/opds/sources/${sourceId}/asset?url=${encodeURIComponent(href)}`;
