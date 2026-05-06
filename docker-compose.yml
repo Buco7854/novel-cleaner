@@ -1,0 +1,88 @@
+# Pulls runtime config from .env (copy from .env.example first).
+# Anything sensitive (admin password, OIDC client secret) MUST live there,
+# not in this file.
+
+services:
+  app:
+    image: ${NOVELCLEANER_IMAGE:-ghcr.io/buco7854/novel-cleaner:latest}
+    # Or build from source instead:
+    # build: .
+    container_name: novel-cleaner
+    restart: unless-stopped
+    ports:
+      - "${NOVELCLEANER_PORT:-8080}:8080"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Production
+
+      # ---- Storage ----
+      Storage__DataDirectory:   ${NOVELCLEANER_DATA_DIR:-/data}
+      Storage__BooksDirectory:  ${NOVELCLEANER_BOOKS_DIR:-/books}
+      Storage__MaxUploadBytes:  ${NOVELCLEANER_MAX_UPLOAD_BYTES:-209715200}
+      ConnectionStrings__Default: "Data Source=${NOVELCLEANER_DATA_DIR:-/data}/novelcleaner.db"
+
+      # ---- Local password auth ----
+      Auth__Password__Enabled:  ${NOVELCLEANER_PASSWORD_AUTH_ENABLED:-true}
+      # Optional bootstrap admin. Leave both empty to land on the setup page.
+      Auth__FirstAdminEmail:    ${NOVELCLEANER_FIRST_ADMIN_EMAIL:-}
+      Auth__FirstAdminPassword: ${NOVELCLEANER_FIRST_ADMIN_PASSWORD:-}
+
+      # ---- Reverse-proxy trust ----
+      # Loopback + RFC 1918 + IPv6-ULA are trusted by default. Extra ranges
+      # / IPs (comma-separated) get added on top. Set to "0.0.0.0/0,::/0"
+      # to trust any proxy.
+      ForwardedHeaders__KnownNetworks: ${NOVELCLEANER_FORWARDED_KNOWN_NETWORKS:-}
+      ForwardedHeaders__KnownProxies:  ${NOVELCLEANER_FORWARDED_KNOWN_PROXIES:-}
+
+      # ---- OPDS ----
+      Opds__AllowPrivateNetworks: ${NOVELCLEANER_OPDS_ALLOW_PRIVATE_NETWORKS:-false}
+
+      # ---- OIDC ----
+      Auth__Oidc__Enabled:      ${NOVELCLEANER_OIDC_ENABLED:-false}
+      Auth__Oidc__ClientId:     ${NOVELCLEANER_OIDC_CLIENT_ID:-}
+      Auth__Oidc__ClientSecret: ${NOVELCLEANER_OIDC_CLIENT_SECRET:-}
+      Auth__Oidc__DisplayName:  ${NOVELCLEANER_OIDC_DISPLAY_NAME:-single sign-on}
+      # Mode (a) standard discovery
+      Auth__Oidc__Authority: ${NOVELCLEANER_OIDC_AUTHORITY:-}
+      # Mode (b) explicit discovery URL
+      Auth__Oidc__MetadataAddress: ${NOVELCLEANER_OIDC_METADATA_ADDRESS:-}
+      # Mode (c) fully manual endpoints
+      Auth__Oidc__Issuer:                ${NOVELCLEANER_OIDC_ISSUER:-}
+      Auth__Oidc__AuthorizationEndpoint: ${NOVELCLEANER_OIDC_AUTHORIZATION_ENDPOINT:-}
+      Auth__Oidc__TokenEndpoint:         ${NOVELCLEANER_OIDC_TOKEN_ENDPOINT:-}
+      Auth__Oidc__UserInfoEndpoint:      ${NOVELCLEANER_OIDC_USERINFO_ENDPOINT:-}
+      Auth__Oidc__JwksUri:               ${NOVELCLEANER_OIDC_JWKS_URI:-}
+      Auth__Oidc__EndSessionEndpoint:    ${NOVELCLEANER_OIDC_END_SESSION_ENDPOINT:-}
+      # Group → role mapping (optional).
+      # Empty AdminGroup → admin role isn't managed by OIDC; manual promotions stick.
+      # Empty DropGroup  → BookDrop role isn't managed by OIDC. Only consulted
+      # when DefaultBookDrop is false.
+      Auth__Oidc__GroupsClaim:         ${NOVELCLEANER_OIDC_GROUPS_CLAIM:-groups}
+      Auth__Oidc__AdminGroups__0:      ${NOVELCLEANER_OIDC_ADMIN_GROUP:-}
+      Auth__Oidc__DropFolderGroups__0: ${NOVELCLEANER_OIDC_DROP_GROUP:-}
+      Auth__Oidc__AutoProvision:       ${NOVELCLEANER_OIDC_AUTO_PROVISION:-true}
+
+      # Default permissions
+      Auth__DefaultBookDrop: ${NOVELCLEANER_DEFAULT_BOOK_DROP:-true}
+    volumes:
+      - novelcleaner-data:/data
+      - novelcleaner-books:/books
+      # Optional: per-user "drop folder" — when enabled in Settings (UI),
+      # finished cleaned EPUBs are auto-copied here. Uncomment and point the
+      # left side at a host directory (or a named volume / Calibre import
+      # folder) you want the books to land in. Then in the app go to
+      # Settings → Drop folder and set the path to /bookdrop.
+      # - /path/on/host/bookdrop:/bookdrop
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/api/auth/config"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+volumes:
+  novelcleaner-data:
+  novelcleaner-books:

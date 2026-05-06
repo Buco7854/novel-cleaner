@@ -1,0 +1,40 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.pidb
+*.userprefs
+**/Properties/launchSettings.json.local
+appsettings.*.local.json
+*.db
+*.db-shm
+*.db-wal
+
+# Node / React
+node_modules/
+client/dist/
+client/.vite/
+*.tsbuildinfo
+
+# Editor / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime — match anywhere; the dev server creates these under server/.
+# The leading dot (.dev-*) is enough to disambiguate from source folders
+# like server/Data/ on case-insensitive filesystems.
+.dev-data/
+.dev-books/
+/data/
+/books/
+/uploads/
+/logs/
+
+# Credentials accidentally placed
+.env
+.env.local
+.env.*.local
