@@ -128,6 +128,37 @@ public static class OpdsEndpoints
             }
         });
 
+        // ----- Asset proxy (cover images, etc.) -----
+        // Browsers can't attach the source's stored basic-auth credentials
+        // when loading <img src> directly, and they DO surface upstream 401
+        // challenges as a native auth prompt. Proxy through the server so
+        // the request carries the right credentials and the browser only
+        // ever sees our (cookie-authenticated) origin.
+        group.MapGet("/sources/{id:guid}/asset", async (
+            Guid id, HttpContext http, AppDbContext db, OpdsService opds,
+            ILoggerFactory loggerFactory,
+            [FromQuery] string url, CancellationToken ct) =>
+        {
+            var src = await GetOwnedAsync(db, http, id);
+            if (src is null) { http.Response.StatusCode = StatusCodes.Status404NotFound; return; }
+            if (!IsSameOriginAsSource(url, src.Url, out _))
+            {
+                http.Response.StatusCode = StatusCodes.Status400BadRequest;
+                return;
+            }
+            try
+            {
+                await opds.ProxyAssetAsync(src, url, http.Response, ct);
+            }
+            catch (Exception ex)
+            {
+                loggerFactory.CreateLogger("opds.asset")
+                    .LogWarning(ex, "OPDS asset proxy failed for source {SourceId}", id);
+                if (!http.Response.HasStarted)
+                    http.Response.StatusCode = StatusCodes.Status502BadGateway;
+            }
+        });
+
         // ----- Import (download + queue cleaning) -----
         group.MapPost("/sources/{id:guid}/import", async (
             Guid id, HttpContext http, AppDbContext db, OpdsService opds,

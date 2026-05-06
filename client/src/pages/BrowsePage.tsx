@@ -3,7 +3,7 @@ import { ArrowLeft, BookText, ChevronRight, Folder, Loader2, Sparkles } from "lu
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { browseSource, importEntry, OpdsBook, OpdsCategory } from "../api/opds";
+import { browseSource, importEntry, OpdsBook, OpdsCategory, sourceAssetUrl } from "../api/opds";
 import { useToast } from "../contexts/ToastContext";
 import { clsx } from "../utils/clsx";
 
@@ -102,6 +102,7 @@ export function BrowsePage() {
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {feed.data.books.map((b, i) => (
                 <BookCard key={i}
+                  sourceId={id}
                   book={b}
                   onClean={(href, title) => importBook.mutate({ href, title })}
                   cleaning={importBook.isPending} />
@@ -135,7 +136,8 @@ export function BrowsePage() {
   );
 }
 
-function BookCard({ book, onClean, cleaning }: {
+function BookCard({ sourceId, book, onClean, cleaning }: {
+  sourceId: string;
   book: OpdsBook;
   onClean: (href: string, title: string) => void;
   cleaning: boolean;
@@ -151,7 +153,7 @@ function BookCard({ book, onClean, cleaning }: {
       <div className="flex items-start gap-3">
         <div className="grid h-16 w-12 flex-shrink-0 place-items-center overflow-hidden rounded bg-stone-100 dark:bg-stone-700">
           {book.coverHref
-            ? <img src={book.coverHref} alt="" className="h-full w-full object-cover" />
+            ? <img src={sourceAssetUrl(sourceId, book.coverHref)} alt="" className="h-full w-full object-cover" />
             : <BookText className="h-4 w-4 text-stone-400" />}
         </div>
         <div className="min-w-0 flex-1">

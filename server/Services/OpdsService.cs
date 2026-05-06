@@ -54,6 +54,35 @@ public sealed class OpdsService(
         return Parse(xml, baseUri: new Uri(url));
     }
 
+    /// <summary>
+    /// Streams an asset (typically a cover image) from the OPDS source to
+    /// <paramref name="outResp"/>, attaching the source's stored credentials.
+    /// Used by the cover-image proxy so the browser never talks to the
+    /// upstream directly — otherwise a private OPDS catalog returns
+    /// <c>401 WWW-Authenticate: Basic</c> and the browser raises its native
+    /// auth prompt for the upstream host.
+    /// </summary>
+    public async Task ProxyAssetAsync(
+        OpdsSource source, string url, HttpResponse outResp, CancellationToken ct)
+    {
+        using var http = BuildClient(source);
+        using var resp = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            // Never forward upstream auth-challenge headers — that would
+            // re-trigger the browser auth prompt this proxy exists to avoid.
+            outResp.StatusCode = StatusCodes.Status502BadGateway;
+            return;
+        }
+        outResp.StatusCode = StatusCodes.Status200OK;
+        outResp.ContentType = resp.Content.Headers.ContentType?.ToString()
+            ?? "application/octet-stream";
+        if (resp.Content.Headers.ContentLength is { } len)
+            outResp.ContentLength = len;
+        outResp.Headers.CacheControl = "private, max-age=3600";
+        await resp.Content.CopyToAsync(outResp.Body, ct);
+    }
+
     public async Task<(string Path, string FileName, long Size)> DownloadEntryAsync(
         OpdsSource source, string href, CancellationToken ct)
     {
