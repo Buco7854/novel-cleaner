@@ -39,7 +39,7 @@ public sealed class OpenAiClient(HttpClient http, ILogger<OpenAiClient> log)
 
         Rules:
         - Copy the text to remove VERBATIM — character-for-character from the input. No paraphrasing, summarising, or truncation.
-        - Return the SMALLEST substring that captures the watermark / inserted text. Do NOT include any surrounding prose. If a watermark is embedded mid-sentence — for example "The sheer /N_o_v_e_l_i_g_h_t/ size of the black tendrils" — the item to remove is "/N_o_v_e_l_i_g_h_t/" (just the inserted token), NEVER the whole sentence. Removing surrounding narrative text is unacceptable; it deletes the author's prose.
+        - Return the SMALLEST substring that captures the watermark / inserted text. Do NOT include any surrounding prose. If a watermark is embedded mid-sentence — for example "A familiar shape ⟦meta:tk-8821-X⟧ moved across the wall" — the item to remove is "⟦meta:tk-8821-X⟧" (just the inserted token), NEVER the whole sentence. Removing surrounding narrative text is unacceptable; it deletes the author's prose.
         - If a passage spans multiple lines, return each distinct part as a separate item.
         - Be conservative: when in doubt, do NOT include an item. Preserve all legitimate book content.
         - Return an empty items list if nothing in the input clearly qualifies.
