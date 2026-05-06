@@ -1,0 +1,104 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root { height: 100%; }
+  body {
+    @apply bg-stone-50 text-stone-900 antialiased font-sans;
+  }
+  :root.dark body {
+    @apply bg-stone-950 text-stone-100;
+  }
+  /* Reset focus on everything; component classes opt back in. */
+  *:focus { outline: none; }
+  *:focus-visible { outline: none; }
+}
+
+@layer components {
+  .page-title {
+    @apply text-2xl sm:text-3xl font-semibold tracking-tight text-stone-900 dark:text-stone-50;
+  }
+  .page-subtitle {
+    @apply mt-2 max-w-prose text-sm text-stone-500 dark:text-stone-400;
+  }
+  .section-title {
+    @apply text-base font-semibold tracking-tight text-stone-900 dark:text-stone-50;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium
+           transition-colors disabled:cursor-not-allowed disabled:opacity-50 select-none
+           focus-visible:ring-2 focus-visible:ring-stone-900/40 focus-visible:ring-offset-2
+           focus-visible:ring-offset-stone-50 dark:focus-visible:ring-stone-100/40
+           dark:focus-visible:ring-offset-stone-950;
+  }
+  .btn-primary {
+    @apply btn bg-stone-900 text-white hover:bg-stone-700 active:bg-stone-600
+           dark:bg-stone-100 dark:text-stone-900 dark:hover:bg-white dark:active:bg-stone-200;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-stone-800 ring-1 ring-stone-300 hover:bg-stone-50 hover:text-stone-900
+           dark:bg-stone-800 dark:text-stone-100 dark:ring-stone-600 dark:hover:bg-stone-700;
+  }
+  .btn-ghost {
+    @apply btn text-stone-500 hover:bg-stone-100 hover:text-stone-900
+           dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100;
+  }
+  .btn-danger { @apply btn bg-rose-700 text-white hover:bg-rose-800; }
+
+  .card {
+    @apply rounded-xl bg-white ring-1 ring-stone-200/80 shadow-[0_1px_2px_rgba(0,0,0,0.04)]
+           dark:bg-stone-900 dark:ring-stone-700/60 dark:shadow-none;
+  }
+
+  .input {
+    @apply block w-full rounded-md border-0 bg-white px-3 py-2 text-sm text-stone-900
+           ring-1 ring-inset ring-stone-300 placeholder:text-stone-400
+           focus:ring-2 focus:ring-inset focus:ring-stone-900 disabled:opacity-50
+           dark:bg-stone-800 dark:text-stone-100 dark:ring-stone-600 dark:placeholder:text-stone-500
+           dark:focus:ring-stone-200;
+  }
+  .label { @apply block text-xs font-medium text-stone-600 dark:text-stone-400 mb-1; }
+
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium
+           ring-1 ring-inset;
+  }
+
+  .top-nav-link {
+    @apply relative inline-flex items-center px-1 py-5 text-sm font-medium transition-colors
+           after:absolute after:inset-x-0 after:-bottom-px after:h-[2px] after:transition-colors
+           focus-visible:rounded focus-visible:ring-2 focus-visible:ring-stone-900/30
+           dark:focus-visible:ring-stone-100/30;
+  }
+
+  /* Mobile-friendly two-column "data row" layout used in tables-as-cards */
+  .data-row-label {
+    @apply text-[11px] uppercase tracking-wide text-stone-400 dark:text-stone-500;
+  }
+
+  .log-line {
+    display: grid;
+    grid-template-columns: 92px 64px 1fr;
+    gap: 12px;
+    padding: 2px 8px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    border-radius: 4px;
+    @apply font-mono text-[12.5px];
+  }
+  .log-line + .log-line { @apply border-t border-stone-200 dark:border-stone-800; }
+  .log-line .ts { @apply text-stone-400 dark:text-stone-500; }
+  .log-line .lvl { @apply uppercase font-semibold text-[11px]; }
+  .log-line .msg { @apply text-stone-800 dark:text-stone-200; }
+  .log-line[data-level="info"]    .lvl { @apply text-sky-600    dark:text-sky-400; }
+  .log-line[data-level="warn"]    .lvl { @apply text-amber-600  dark:text-amber-400; }
+  .log-line[data-level="error"]   .lvl { @apply text-rose-600   dark:text-rose-400; }
+  .log-line[data-level="removed"] .lvl { @apply text-fuchsia-600 dark:text-fuchsia-400; }
+  .log-line[data-level="partial"] .lvl { @apply text-amber-700  dark:text-amber-400; }
+  .log-line[data-level="partial"] .msg { @apply text-amber-900  dark:text-amber-200; }
+  .log-line[data-level="clean"]   .lvl { @apply text-emerald-600 dark:text-emerald-400; }
+  .log-line[data-level="summary"] .lvl { @apply text-orange-600  dark:text-orange-400; }
+}
