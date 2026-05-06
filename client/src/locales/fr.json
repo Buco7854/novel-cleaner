@@ -1,0 +1,250 @@
+{
+  "app": {
+    "name": "Novel Cleaner",
+    "signOut": "Se déconnecter",
+    "admin": "Admin",
+    "loading": "Chargement…"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "jobs": "Tâches",
+    "sources": "Sources",
+    "settings": "Paramètres",
+    "users": "Utilisateurs"
+  },
+  "theme": {
+    "light": "Clair",
+    "system": "Système",
+    "dark": "Sombre"
+  },
+  "login": {
+    "title": "Se connecter",
+    "subtitle": "Nettoyez les filigranes de votre bibliothèque EPUB.",
+    "email": "Adresse e-mail",
+    "emailPlaceholder": "vous@exemple.com",
+    "password": "Mot de passe",
+    "sso": "Continuer avec l'authentification unique",
+    "ssoWith": "Continuer avec {{provider}}",
+    "ssoFallback": "l'authentification unique",
+    "submit": "Se connecter",
+    "error": {
+      "invalid": "Adresse e-mail ou mot de passe incorrect.",
+      "failed": "Connexion échouée. Veuillez réessayer.",
+      "noProviders": "Aucun fournisseur d'authentification n'est activé. Configurez le mot de passe ou OIDC sur le serveur."
+    }
+  },
+  "setup": {
+    "title": "Configurer votre instance",
+    "subtitle": "Créez le compte administrateur pour commencer. Vous pourrez ajouter d'autres utilisateurs ensuite.",
+    "displayName": "Nom d'affichage",
+    "displayNamePlaceholder": "Votre nom",
+    "email": "Adresse e-mail",
+    "emailPlaceholder": "admin@exemple.com",
+    "password": "Mot de passe",
+    "passwordPlaceholder": "Au moins 10 caractères",
+    "confirmPassword": "Confirmer le mot de passe",
+    "submit": "Créer le compte",
+    "error": {
+      "mismatch": "Les mots de passe ne correspondent pas.",
+      "failed": "La configuration a échoué. Veuillez réessayer."
+    }
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "subtitle": "Importez des fichiers EPUB pour nettoyer les filigranes. Chaque livre est traité en arrière-plan.",
+    "scanMode": "Mode d'analyse",
+    "scanModeDescription": "Le mode motif envoie uniquement le contexte autour de chaque correspondance ; la page entière envoie chaque chapitre.",
+    "pattern": "Motif",
+    "fullPage": "Page entière",
+    "recentJobs": "Tâches récentes",
+    "viewAll": "Voir tout",
+    "noJobs": "Aucune tâche. Déposez un livre ci-dessus pour commencer.",
+    "settingsWarning": "Ajoutez une clé API et un modèle dans les <1>Paramètres</1> avant d'importer.",
+    "dropHint": "Déposez des fichiers EPUB ici, ou cliquez pour parcourir",
+    "dropMeta": "EPUB uniquement · plusieurs fichiers · 200 Mo max chacun"
+  },
+  "jobs": {
+    "title": "Tâches",
+    "subtitle": "Tous les livres que vous traitez. Cliquez sur une ligne pour voir les journaux en direct.",
+    "file": "Fichier",
+    "mode": "Mode",
+    "status": "Statut",
+    "created": "Créé",
+    "actions": "Actions",
+    "noJobs": "Aucune tâche pour l'instant.",
+    "fullScan": "Analyse complète",
+    "patternScan": "Motif",
+    "removed": "supprimé {{count}}",
+    "pagination": "Page {{current}} sur {{total}}",
+    "prev": "Précédent",
+    "next": "Suivant",
+    "total_one": "{{count}} tâche",
+    "total_other": "{{count}} tâches"
+  },
+  "jobDetail": {
+    "mode": "Mode",
+    "model": "Modèle",
+    "removed": "Supprimé",
+    "created": "Créé",
+    "download": "Télécharger",
+    "copyToDrop": "Copier dans le dossier de dépôt",
+    "dropHint": "Recopier le fichier nettoyé dans le dossier de dépôt configuré dans Paramètres.",
+    "dropSuccess": "Copié dans le dossier de dépôt",
+    "dropFailed": "Échec de la copie",
+    "patterns": "Motifs",
+    "contextWindow": "Fenêtre de contexte",
+    "parallel": "Parallèle",
+    "parallelHint": "Requêtes LLM concurrentes pour cette tâche (fixées au démarrage).",
+    "progressOf": "{{done}} / {{total}} {{unit}}",
+    "unitPages": "pages",
+    "unitChunks": "extraits",
+    "liveLog": "Journal en direct",
+    "noLogs": "Aucune entrée de journal…",
+    "fullPageScan": "Analyse page entière",
+    "patternDetection": "Détection par motif",
+    "jobFailed": "Tâche échouée"
+  },
+  "status": {
+    "Queued": "En attente",
+    "Running": "En cours",
+    "Completed": "Terminée",
+    "Failed": "Échouée",
+    "Canceled": "Annulée"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "readOnly": "Lecture seule",
+    "readOnlyHint": "Ces paramètres sont gérés par un administrateur. Demandez-lui de les modifier.",
+    "saveApp": "Enregistrer les paramètres globaux",
+    "saveUser": "Enregistrer mes paramètres",
+    "scopes": {
+      "app": "Paramètres globaux",
+      "appHint": "Partagés par tout le monde sur cette instance. Les identifiants LLM, l'invite système, le budget de requêtes parallèles et le dossier de dépôt vivent ici.",
+      "adminBadge": "Admin",
+      "user": "Paramètres personnels",
+      "userHint": "Juste pour vous — votre mode d'analyse par défaut, fenêtre de contexte et motifs de déclenchement.",
+      "userBadge": "Personnel"
+    },
+    "llm": {
+      "title": "Fournisseur LLM",
+      "subtitle": "N'importe quel endpoint compatible OpenAI.",
+      "apiKey": "Clé API",
+      "apiKeySet": "Déjà définie — laisser vide pour conserver",
+      "apiKeyRequired": "Obligatoire",
+      "baseUrl": "URL de base",
+      "baseUrlHint": "Laisser vide pour api.openai.com/v1",
+      "model": "Modèle",
+      "modelHint": "ex. gpt-4o-mini, mistral-small, llama-3.1-8b-instruct"
+    },
+    "scanning": {
+      "title": "Analyse",
+      "subtitle": "Valeurs par défaut pour les nouvelles tâches (modifiables à chaque import).",
+      "defaultMode": "Mode par défaut",
+      "patternDetection": "Détection par motif",
+      "fullPage": "Analyse page entière",
+      "contextWindow": "Fenêtre de contexte (caractères)",
+      "contextWindowHint": "S'applique uniquement en mode Motif — caractères de contexte conservés autour de chaque correspondance. Ignoré en mode page entière (la page entière est envoyée).",
+      "parallelRequests": "Requêtes LLM parallèles"
+    },
+    "prompt": {
+      "title": "Invite système",
+      "subtitle": "Le format de sortie est fixe pour garantir un JSON valide. Vous pouvez ajouter des instructions supplémentaires ci-dessous.",
+      "formatTitle": "Format de sortie (lecture seule)",
+      "additionalTitle": "Instructions supplémentaires",
+      "additionalHint": "Optionnel. Ajouté à l'invite de base lors de l'exécution des tâches.",
+      "additionalPlaceholder": "Ajoutez des instructions supplémentaires pour le LLM…",
+      "noAdditions": "Aucune instruction supplémentaire.",
+      "hasAdditions": "Instructions personnalisées actives — seront ajoutées à l'invite de base."
+    },
+    "dropFolder": {
+      "title": "Dossier de dépôt",
+      "subtitle": "Copier automatiquement chaque EPUB nettoyé dans ce dossier à la fin de la tâche.",
+      "label": "Chemin du dossier",
+      "placeholder": "/bookdrop",
+      "hint": "Chemin absolu sur le serveur. Laisser vide pour désactiver. Le dossier est créé s'il n'existe pas ; les fichiers existants ne sont jamais écrasés."
+    },
+    "patterns": {
+      "title": "Motifs déclencheurs",
+      "subtitle": "Regex ou texte brut. Les fichiers correspondant à un motif sont envoyés au LLM.",
+      "none": "Aucun motif pour l'instant.",
+      "add": "Ajouter"
+    },
+    "save": "Enregistrer",
+    "saved": "Paramètres enregistrés"
+  },
+  "sources": {
+    "title": "Sources",
+    "subtitle": "Catalogues OPDS connectés — Calibre, Standard Ebooks, votre bibliothèque privée.",
+    "add": "Ajouter une source",
+    "none": "Aucune source. Ajoutez une URL de catalogue OPDS pour commencer.",
+    "noneHint": "Essayez {{url}} pour démarrer.",
+    "browse": "Parcourir",
+    "autoClean": "Nettoyage auto à l'import",
+    "authenticated": "Authentifié",
+    "modal": {
+      "add": "Ajouter une source OPDS",
+      "edit": "Modifier la source",
+      "name": "Nom",
+      "namePlaceholder": "Mon Calibre",
+      "url": "URL OPDS",
+      "urlPlaceholder": "https://exemple.com/opds",
+      "username": "Nom d'utilisateur (optionnel)",
+      "password": "Mot de passe (optionnel)",
+      "autoClean": "Lancer un nettoyage automatiquement à l'import",
+      "cancel": "Annuler",
+      "addBtn": "Ajouter",
+      "saveBtn": "Enregistrer"
+    },
+    "deleteConfirm": "Supprimer {{name}} ?"
+  },
+  "browse": {
+    "title": "Parcourir",
+    "back": "Sources",
+    "up": "Remonter",
+    "loading": "Récupération du flux…",
+    "empty": "Flux vide.",
+    "unknownAuthor": "Auteur inconnu",
+    "importEpub": "Importer EPUB",
+    "import": "Importer",
+    "noLink": "Aucun lien de téléchargement"
+  },
+  "users": {
+    "title": "Utilisateurs",
+    "subtitle": "Gérez les comptes locaux. Les utilisateurs OIDC apparaissent ici après leur première connexion.",
+    "new": "Nouvel utilisateur",
+    "col": {
+      "user": "Utilisateur",
+      "provider": "Fournisseur",
+      "roles": "Rôles",
+      "lastLogin": "Dernière connexion",
+      "status": "Statut",
+      "actions": "Actions"
+    },
+    "active": "Actif",
+    "disabled": "Désactivé",
+    "promote": "Promouvoir admin",
+    "demote": "Rétrograder",
+    "resetPwd": "Réinitialiser le mot de passe",
+    "disable": "Désactiver",
+    "enable": "Activer",
+    "delete": "Supprimer",
+    "deleteConfirm": "Supprimer {{email}} ?",
+    "create": {
+      "title": "Créer un utilisateur",
+      "email": "Adresse e-mail",
+      "displayName": "Nom d'affichage",
+      "password": "Mot de passe",
+      "isAdmin": "Administrateur",
+      "cancel": "Annuler",
+      "submit": "Créer",
+      "success": "Utilisateur créé"
+    },
+    "password": {
+      "title": "Réinitialiser le mot de passe de {{email}}",
+      "label": "Nouveau mot de passe",
+      "cancel": "Annuler",
+      "submit": "Mettre à jour",
+      "success": "Mot de passe mis à jour"
+    }
+  }
+}

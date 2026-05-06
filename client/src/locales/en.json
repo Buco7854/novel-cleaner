@@ -1,0 +1,250 @@
+{
+  "app": {
+    "name": "Novel Cleaner",
+    "signOut": "Sign out",
+    "admin": "Admin",
+    "loading": "Loading…"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "jobs": "Jobs",
+    "sources": "Sources",
+    "settings": "Settings",
+    "users": "Users"
+  },
+  "theme": {
+    "light": "Light",
+    "system": "System",
+    "dark": "Dark"
+  },
+  "login": {
+    "title": "Sign in",
+    "subtitle": "Clean watermarks from your EPUB library.",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "sso": "Continue with single sign-on",
+    "ssoWith": "Continue with {{provider}}",
+    "ssoFallback": "single sign-on",
+    "submit": "Sign in",
+    "error": {
+      "invalid": "Invalid email or password.",
+      "failed": "Sign-in failed. Please try again.",
+      "noProviders": "No authentication providers are enabled. Configure password or OIDC on the server."
+    }
+  },
+  "setup": {
+    "title": "Set up your instance",
+    "subtitle": "Create the administrator account to get started. You can add more users afterward.",
+    "displayName": "Display name",
+    "displayNamePlaceholder": "Your name",
+    "email": "Email",
+    "emailPlaceholder": "admin@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "At least 10 characters",
+    "confirmPassword": "Confirm password",
+    "submit": "Create account",
+    "error": {
+      "mismatch": "Passwords do not match.",
+      "failed": "Setup failed. Please try again."
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "subtitle": "Upload EPUB files to clean watermarks. Each book is processed in the background.",
+    "scanMode": "Scan mode",
+    "scanModeDescription": "Pattern mode sends only the context surrounding each match; full-page sends every chapter.",
+    "pattern": "Pattern",
+    "fullPage": "Full-page",
+    "recentJobs": "Recent jobs",
+    "viewAll": "View all",
+    "noJobs": "No jobs yet. Drop a book above to start.",
+    "settingsWarning": "Add an API key and model on the <1>Settings page</1> before uploading.",
+    "dropHint": "Drop EPUB files here, or click to browse",
+    "dropMeta": "EPUB only · multiple files · max 200 MB each"
+  },
+  "jobs": {
+    "title": "Jobs",
+    "subtitle": "Every book you process. Click a row to see live logs.",
+    "file": "File",
+    "mode": "Mode",
+    "status": "Status",
+    "created": "Created",
+    "actions": "Actions",
+    "noJobs": "No jobs yet.",
+    "fullScan": "Full-scan",
+    "patternScan": "Pattern",
+    "removed": "removed {{count}}",
+    "pagination": "Page {{current}} of {{total}}",
+    "prev": "Previous",
+    "next": "Next",
+    "total_one": "{{count}} job",
+    "total_other": "{{count}} jobs"
+  },
+  "jobDetail": {
+    "mode": "Mode",
+    "model": "Model",
+    "removed": "Removed",
+    "created": "Created",
+    "download": "Download",
+    "copyToDrop": "Copy to drop folder",
+    "dropHint": "Re-copy the cleaned file to the drop folder configured in Settings.",
+    "dropSuccess": "Copied to drop folder",
+    "dropFailed": "Drop folder copy failed",
+    "patterns": "Patterns",
+    "contextWindow": "Context window",
+    "parallel": "Parallel",
+    "parallelHint": "Concurrent LLM requests for this job (frozen at job start).",
+    "progressOf": "{{done}} / {{total}} {{unit}}",
+    "unitPages": "pages",
+    "unitChunks": "chunks",
+    "liveLog": "Live log",
+    "noLogs": "No log lines yet…",
+    "fullPageScan": "Full-page scan",
+    "patternDetection": "Pattern detection",
+    "jobFailed": "Job failed"
+  },
+  "status": {
+    "Queued": "Queued",
+    "Running": "Running",
+    "Completed": "Completed",
+    "Failed": "Failed",
+    "Canceled": "Canceled"
+  },
+  "settings": {
+    "title": "Settings",
+    "readOnly": "Read-only",
+    "readOnlyHint": "These settings are managed by an administrator. Ask an admin to change them.",
+    "saveApp": "Save global settings",
+    "saveUser": "Save personal settings",
+    "scopes": {
+      "app": "Global settings",
+      "appHint": "Shared by everyone on this instance. The LLM credentials, system prompt, parallel-request budget, and drop folder live here.",
+      "adminBadge": "Admin",
+      "user": "Personal settings",
+      "userHint": "Just for you — your default scan mode, context window, and trigger patterns.",
+      "userBadge": "Personal"
+    },
+    "llm": {
+      "title": "LLM provider",
+      "subtitle": "Any OpenAI-compatible chat completions endpoint.",
+      "apiKey": "API Key",
+      "apiKeySet": "Already set — leave blank to keep",
+      "apiKeyRequired": "Required",
+      "baseUrl": "Base URL",
+      "baseUrlHint": "Leave blank for api.openai.com/v1",
+      "model": "Model",
+      "modelHint": "e.g. gpt-4o-mini, mistral-small, llama-3.1-8b-instruct"
+    },
+    "scanning": {
+      "title": "Scanning",
+      "subtitle": "Defaults for new jobs (still overridable per-upload).",
+      "defaultMode": "Default mode",
+      "patternDetection": "Pattern detection",
+      "fullPage": "Full-page scan",
+      "contextWindow": "Context window (chars)",
+      "contextWindowHint": "Only applies in Pattern mode — characters of context kept around each match. Ignored in Full-page mode (the whole page is sent).",
+      "parallelRequests": "Parallel LLM requests"
+    },
+    "prompt": {
+      "title": "System prompt",
+      "subtitle": "The output format is fixed to ensure valid JSON. You can add extra instructions below.",
+      "formatTitle": "Output format (read-only)",
+      "additionalTitle": "Additional instructions",
+      "additionalHint": "Optional. Appended to the base prompt when running jobs.",
+      "additionalPlaceholder": "Add any extra guidance for the LLM…",
+      "noAdditions": "No additional instructions.",
+      "hasAdditions": "Custom instructions active — will be appended to the base prompt."
+    },
+    "dropFolder": {
+      "title": "Drop folder",
+      "subtitle": "Auto-copy each cleaned EPUB to this folder when the job finishes.",
+      "label": "Folder path",
+      "placeholder": "/bookdrop",
+      "hint": "Absolute path on the server. Leave blank to disable. The folder is created if it doesn't exist; existing files are never overwritten."
+    },
+    "patterns": {
+      "title": "Trigger patterns",
+      "subtitle": "Regex or plain-text. Files matching any pattern are sent to the LLM.",
+      "none": "No patterns yet.",
+      "add": "Add"
+    },
+    "save": "Save changes",
+    "saved": "Settings saved"
+  },
+  "sources": {
+    "title": "Sources",
+    "subtitle": "OPDS catalogs you've connected — Calibre, Standard Ebooks, your private bookshelf.",
+    "add": "Add source",
+    "none": "No sources yet. Add an OPDS catalog URL to start importing books.",
+    "noneHint": "Try {{url}} as a starter.",
+    "browse": "Browse",
+    "autoClean": "Auto-clean on import",
+    "authenticated": "Authenticated",
+    "modal": {
+      "add": "Add OPDS source",
+      "edit": "Edit source",
+      "name": "Name",
+      "namePlaceholder": "My Calibre",
+      "url": "OPDS URL",
+      "urlPlaceholder": "https://example.com/opds",
+      "username": "Username (optional)",
+      "password": "Password (optional)",
+      "autoClean": "Run a clean job automatically when importing",
+      "cancel": "Cancel",
+      "addBtn": "Add",
+      "saveBtn": "Save"
+    },
+    "deleteConfirm": "Delete {{name}}?"
+  },
+  "browse": {
+    "title": "Browse",
+    "back": "Sources",
+    "up": "Up",
+    "loading": "Fetching feed…",
+    "empty": "Empty feed.",
+    "unknownAuthor": "Unknown author",
+    "importEpub": "Import EPUB",
+    "import": "Import",
+    "noLink": "No download link"
+  },
+  "users": {
+    "title": "Users",
+    "subtitle": "Provision local accounts. OIDC-provisioned users appear here once they sign in.",
+    "new": "New user",
+    "col": {
+      "user": "User",
+      "provider": "Provider",
+      "roles": "Roles",
+      "lastLogin": "Last login",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "active": "Active",
+    "disabled": "Disabled",
+    "promote": "Promote to admin",
+    "demote": "Demote",
+    "resetPwd": "Reset password",
+    "disable": "Disable",
+    "enable": "Enable",
+    "delete": "Delete",
+    "deleteConfirm": "Delete {{email}}?",
+    "create": {
+      "title": "Create user",
+      "email": "Email",
+      "displayName": "Display name",
+      "password": "Password",
+      "isAdmin": "Administrator",
+      "cancel": "Cancel",
+      "submit": "Create",
+      "success": "User created"
+    },
+    "password": {
+      "title": "Reset password for {{email}}",
+      "label": "New password",
+      "cancel": "Cancel",
+      "submit": "Update",
+      "success": "Password updated"
+    }
+  }
+}
