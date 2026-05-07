@@ -56,3 +56,6 @@ export const finalizeJob = (jobId: string) =>
 
 export const reprocessJob = (jobId: string) =>
   apiJson<{ id: string }>(`/api/jobs/${jobId}/reprocess`, "POST", {});
+
+export const rerunAi = (jobId: string) =>
+  apiJson<{ ok: boolean }>(`/api/jobs/${jobId}/rerun-ai`, "POST", {});

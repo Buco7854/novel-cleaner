@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HubConnectionState } from "@microsoft/signalr";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, FileText, FolderInput, Loader2, Pause, Play, RotateCcw } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, FileText, FolderInput, Loader2, Pause, Play, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { copyToDrop, downloadUrl, getJob, JobStatus, pauseJob, resumeJob } from "../api/jobs";
 import { createJobHub, JobLogEvent } from "../api/jobsHub";
-import { finalizeJob, reprocessJob } from "../api/reviews";
+import { finalizeJob, reprocessJob, rerunAi } from "../api/reviews";
 import { JobStatusPill } from "../components/JobStatusPill";
 import { ReviewPanel } from "../components/ReviewPanel";
 import { useToast } from "../contexts/ToastContext";
@@ -64,6 +64,16 @@ export function JobDetailPage() {
     onSuccess: ({ id: newId }) => {
       toast.success(t("review.reprocessQueued"));
       nav(`/jobs/${newId}`);
+    },
+    onError: (e) => toast.error(t("review.actionFailed"), e instanceof Error ? e.message : ""),
+  });
+
+  const rerun = useMutation({
+    mutationFn: () => rerunAi(id),
+    onSuccess: () => {
+      toast.success(t("review.rerunQueued"));
+      qc.invalidateQueries({ queryKey: ["job", id] });
+      qc.invalidateQueries({ queryKey: ["reviews", id] });
     },
     onError: (e) => toast.error(t("review.actionFailed"), e instanceof Error ? e.message : ""),
   });
@@ -204,6 +214,17 @@ export function JobDetailPage() {
           >
             {finalize.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t("review.finalize")}
+          </button>
+        )}
+        {(status === "Completed" || status === "AwaitingReview" || status === "Failed" || status === "Canceled") && (
+          <button
+            className="btn-secondary shrink-0"
+            onClick={() => rerun.mutate()}
+            disabled={rerun.isPending}
+            title={t("review.rerunHint")}
+          >
+            {rerun.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {t("review.rerun")}
           </button>
         )}
         {status === "Completed" && job.data.hasOutput && (
