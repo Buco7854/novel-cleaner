@@ -116,6 +116,11 @@ public sealed class JobWorker(
             await logger.UpdateStatusAsync(jobId, JobStatus.Running, 0, 0, queueWork.Count, ct);
 
             var updates = new Dictionary<string, byte[]>();
+            // Review mode collects the matchable proposals per chapter so they
+            // can be persisted as ReviewProposal rows after the parallel loop.
+            // Same lock as `updates` (the worker holds `lock(updates)` across
+            // both writes so the two stay consistent without a second lock).
+            var proposalsPerDoc = new Dictionary<string, IReadOnlyList<AppliedRemoval>>();
             var totalRemoved = 0;
             var completed = 0;
             var totalCount = queueWork.Count;
@@ -201,7 +206,11 @@ public sealed class JobWorker(
 
                     if (bestApplied.Count > 0)
                     {
-                        lock (updates) updates[work.Doc.Name] = bestBytes;
+                        lock (updates)
+                        {
+                            updates[work.Doc.Name] = bestBytes;
+                            proposalsPerDoc[work.Doc.Name] = bestApplied;
+                        }
                         Interlocked.Add(ref totalRemoved, bestApplied.Count);
                         var unmatched = bestRequested - bestApplied.Count;
                         var isPartial = unmatched > 0;
@@ -240,6 +249,56 @@ public sealed class JobWorker(
                 }
             });
             await Task.WhenAll(tasks);
+
+            if (job.ReviewBeforeApplying)
+            {
+                // Persist proposals + visible text for every chapter the LLM
+                // saw — even ones with zero matchable items, so the user can
+                // add custom removals or re-prompt that chapter from the UI.
+                // Status flips to AwaitingReview; the cleaned EPUB is NOT
+                // written until the user calls /finalize.
+                var orderIndex = 0;
+                foreach (var work in queueWork)
+                {
+                    var visibleText = work.Excerpts.Count == 1
+                        ? work.Excerpts[0]
+                        : string.Join("\n\n", work.Excerpts);
+                    var review = new ChapterReview
+                    {
+                        JobId = job.Id,
+                        DocumentName = work.Doc.Name,
+                        VisibleText = visibleText,
+                        OrderIndex = orderIndex++,
+                    };
+                    if (proposalsPerDoc.TryGetValue(work.Doc.Name, out var applied))
+                    {
+                        foreach (var a in applied)
+                        {
+                            // LLM proposals default to Accepted — the review
+                            // UX is "veto unwanted removals", not "approve
+                            // every line on a 600-page book".
+                            review.Proposals.Add(new ReviewProposal
+                            {
+                                Text = a.Removed,
+                                Reason = a.Reason,
+                                Source = ProposalSource.Llm,
+                                Decision = ProposalDecision.Accepted,
+                            });
+                        }
+                    }
+                    db.ChapterReviews.Add(review);
+                }
+
+                var totalProposals = proposalsPerDoc.Values.Sum(v => v.Count);
+                job.Status = JobStatus.AwaitingReview;
+                await db.SaveChangesAsync(ct);
+                await logger.LogAsync(jobId, "summary",
+                    $"Awaiting your review — {queueWork.Count} chapter(s), {totalProposals} proposal(s).",
+                    ct);
+                await logger.UpdateStatusAsync(
+                    jobId, JobStatus.AwaitingReview, 100, totalCount, totalCount, ct);
+                return;
+            }
 
             var outPath = OutputPath(job);
             EpubHandler.WriteUpdatedEpub(job.InputStoragePath, outPath, updates);
