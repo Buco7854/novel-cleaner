@@ -25,6 +25,8 @@ public static class SchemaMigrator
             "INTEGER NOT NULL DEFAULT 1", ct);
         await EnsureColumnAsync(db, logger, "CleanJobs", "ReviewBeforeApplying",
             "INTEGER NOT NULL DEFAULT 0", ct);
+        await EnsureColumnAsync(db, logger, "CleanJobs", "RerunRequested",
+            "INTEGER NOT NULL DEFAULT 0", ct);
         await EnsureTableAsync(db, logger, "ChapterReviews", """
             CREATE TABLE IF NOT EXISTS "ChapterReviews" (
                 "Id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

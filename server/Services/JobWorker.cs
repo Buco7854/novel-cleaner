@@ -48,10 +48,17 @@ public sealed class JobWorker(
             .FirstOrDefaultAsync(j => j.Id == jobId, ct);
         if (job is null) return;
 
+        // Capture & clear the rerun flag immediately so a crashed run doesn't
+        // loop the worker, and so the review-mode persist branch below can
+        // route LLM items to "Pending" instead of "Accepted".
+        var isRerun = job.RerunRequested;
+        job.RerunRequested = false;
         job.Status = JobStatus.Running;
         job.StartedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
         await logger.UpdateStatusAsync(job.Id, JobStatus.Running, 0, ct: ct);
+        if (isRerun)
+            await logger.LogAsync(jobId, "info", "Rerun requested — preserving existing review.", ct);
 
         try
         {
@@ -99,6 +106,18 @@ public sealed class JobWorker(
 
             if (queueWork.Count == 0)
             {
+                if (isRerun)
+                {
+                    // Rerun found nothing new — don't touch the output file or
+                    // throw away curated reviews. Just settle back into the
+                    // appropriate idle state.
+                    var hasReviews = await db.ChapterReviews.AnyAsync(r => r.JobId == jobId, ct);
+                    job.Status = hasReviews ? JobStatus.AwaitingReview : JobStatus.Completed;
+                    await db.SaveChangesAsync(ct);
+                    await logger.LogAsync(jobId, "clean", "Rerun: no new matches.", ct);
+                    await logger.UpdateStatusAsync(jobId, job.Status, 100, 0, 0, ct);
+                    return;
+                }
                 await logger.LogAsync(jobId, "clean", "No matches — copying file unchanged.", ct);
                 var unchanged = OutputPath(job);
                 File.Copy(job.InputStoragePath, unchanged, overwrite: true);
@@ -250,51 +269,81 @@ public sealed class JobWorker(
             });
             await Task.WhenAll(tasks);
 
-            if (job.ReviewBeforeApplying)
+            // A rerun ALWAYS goes through the review-persist branch (even if
+            // the original job ran in non-review mode), so the user gets a
+            // chance to review the new findings before they overwrite a
+            // previously-cleaned file.
+            if (job.ReviewBeforeApplying || isRerun)
             {
-                // Persist proposals + visible text for every chapter the LLM
-                // saw — even ones with zero matchable items, so the user can
-                // add custom removals or re-prompt that chapter from the UI.
-                // Status flips to AwaitingReview; the cleaned EPUB is NOT
-                // written until the user calls /finalize.
-                var orderIndex = 0;
+                // Load existing reviews (if any) to find-or-create per chapter
+                // and to dedupe LLM proposals on rerun. Cheap — bounded by
+                // chapters-with-hits.
+                var existingReviews = await db.ChapterReviews
+                    .Include(r => r.Proposals)
+                    .Where(r => r.JobId == job.Id)
+                    .ToListAsync(ct);
+                var existingByDoc = existingReviews.ToDictionary(r => r.DocumentName);
+
+                var orderIndex = existingReviews.Count == 0
+                    ? 0
+                    : existingReviews.Max(r => r.OrderIndex) + 1;
+                var addedProposals = 0;
+
                 foreach (var work in queueWork)
                 {
                     var visibleText = work.Excerpts.Count == 1
                         ? work.Excerpts[0]
                         : string.Join("\n\n", work.Excerpts);
-                    var review = new ChapterReview
+
+                    if (!existingByDoc.TryGetValue(work.Doc.Name, out var review))
                     {
-                        JobId = job.Id,
-                        DocumentName = work.Doc.Name,
-                        VisibleText = visibleText,
-                        OrderIndex = orderIndex++,
-                    };
-                    if (proposalsPerDoc.TryGetValue(work.Doc.Name, out var applied))
-                    {
-                        foreach (var a in applied)
+                        review = new ChapterReview
                         {
-                            // LLM proposals default to Accepted — the review
-                            // UX is "veto unwanted removals", not "approve
-                            // every line on a 600-page book".
-                            review.Proposals.Add(new ReviewProposal
-                            {
-                                Text = a.Removed,
-                                Reason = a.Reason,
-                                Source = ProposalSource.Llm,
-                                Decision = ProposalDecision.Accepted,
-                            });
-                        }
+                            JobId = job.Id,
+                            DocumentName = work.Doc.Name,
+                            VisibleText = visibleText,
+                            OrderIndex = orderIndex++,
+                        };
+                        db.ChapterReviews.Add(review);
                     }
-                    db.ChapterReviews.Add(review);
+
+                    if (!proposalsPerDoc.TryGetValue(work.Doc.Name, out var applied)) continue;
+
+                    // Dedupe: don't re-add an LLM proposal whose verbatim text
+                    // already exists for this chapter. Avoids accumulating
+                    // dupes on every rerun.
+                    var existingTexts = new HashSet<string>(
+                        review.Proposals
+                            .Where(p => p.Source == ProposalSource.Llm)
+                            .Select(p => p.Text),
+                        StringComparer.Ordinal);
+                    foreach (var a in applied)
+                    {
+                        if (!existingTexts.Add(a.Removed)) continue;
+                        review.Proposals.Add(new ReviewProposal
+                        {
+                            Text = a.Removed,
+                            Reason = a.Reason,
+                            Source = ProposalSource.Llm,
+                            // First pass on a fresh job: accept by default
+                            // (review = "veto unwanted removals"). Rerun: the
+                            // user has already curated the original set, so
+                            // surface new findings as Pending — they must
+                            // explicitly approve them.
+                            Decision = isRerun
+                                ? ProposalDecision.Pending
+                                : ProposalDecision.Accepted,
+                        });
+                        addedProposals++;
+                    }
                 }
 
-                var totalProposals = proposalsPerDoc.Values.Sum(v => v.Count);
                 job.Status = JobStatus.AwaitingReview;
                 await db.SaveChangesAsync(ct);
-                await logger.LogAsync(jobId, "summary",
-                    $"Awaiting your review — {queueWork.Count} chapter(s), {totalProposals} proposal(s).",
-                    ct);
+                var summary = isRerun
+                    ? $"Rerun complete — {addedProposals} new proposal(s) pending across {queueWork.Count} chapter(s)."
+                    : $"Awaiting your review — {queueWork.Count} chapter(s), {addedProposals} proposal(s).";
+                await logger.LogAsync(jobId, "summary", summary, ct);
                 await logger.UpdateStatusAsync(
                     jobId, JobStatus.AwaitingReview, 100, totalCount, totalCount, ct);
                 return;

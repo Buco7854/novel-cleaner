@@ -41,6 +41,15 @@ public class CleanJob
     /// </summary>
     public bool ReviewBeforeApplying { get; set; }
 
+    /// <summary>
+    /// Set by the "rerun AI" endpoint to ask the worker to re-run the LLM
+    /// identification pass against this same job — without cloning to a new
+    /// file. New LLM proposals are appended to the existing ChapterReviews
+    /// as Pending so the user explicitly sees what was just found. Cleared
+    /// by the worker at the start of every run.
+    /// </summary>
+    public bool RerunRequested { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }

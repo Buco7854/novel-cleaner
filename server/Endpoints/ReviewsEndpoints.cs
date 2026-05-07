@@ -198,6 +198,30 @@ public static class ReviewsEndpoints
             return Results.Ok(new { ok = true });
         }).RequireAuthorization();
 
+        // Re-run the LLM identification pass against THIS file (no clone) —
+        // existing accepted/rejected/user proposals stay; new LLM findings
+        // are appended as Pending so the user explicitly sees them. Used
+        // from the file editor's "Run AI" button.
+        app.MapPost("/api/jobs/{jobId:guid}/rerun-ai", async (
+            Guid jobId, HttpContext http, AppDbContext db, JobQueue queue,
+            CancellationToken ct) =>
+        {
+            var job = await GetOwnedJobAsync(db, http, jobId);
+            if (job is null) return Results.NotFound();
+            // Block reruns for in-flight states; everything terminal-ish is OK.
+            if (job.Status is JobStatus.Running or JobStatus.Queued or JobStatus.Paused)
+                return Results.BadRequest(new { error = "Job is already running. Wait for it to finish." });
+            if (!File.Exists(job.InputStoragePath))
+                return Results.BadRequest(new { error = "Original file is missing." });
+
+            job.RerunRequested = true;
+            job.Status = JobStatus.Queued;
+            job.ErrorMessage = null;
+            await db.SaveChangesAsync(ct);
+            await queue.EnqueueAsync(job.Id, ct);
+            return Results.Ok(new { ok = true });
+        }).RequireAuthorization();
+
         // Reprocess: clone a Completed job's output as a new input. Inherits
         // the user's *current* settings (including ReviewBeforeApplying).
         app.MapPost("/api/jobs/{jobId:guid}/reprocess", async (
