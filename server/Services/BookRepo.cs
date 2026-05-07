@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.RegularExpressions;
 using NovelCleaner.Server.Configuration;
 using NovelCleaner.Server.Models;
 using LibGit2Sharp;
@@ -271,6 +272,186 @@ public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo>
         repo.Commit(message, AppSig, AppSig,
             new CommitOptions { AllowEmptyCommit = allowEmpty });
         return true;
+    }
+
+    /// <summary>
+    /// Rewrites <paramref name="relPath"/>'s working-tree content to
+    /// "HEAD plus every diff hunk except the one at
+    /// <paramref name="hunkIndex"/>". The user-facing "reject this hunk"
+    /// button — leaves all the OTHER pending changes alone so the user can
+    /// triage them one at a time, then commit-all when they're done.
+    ///
+    /// Returns false when there's no HEAD yet, no diff for the path, or the
+    /// index is out of bounds for the current diff.
+    /// </summary>
+    public bool RejectHunk(string repoPath, string relPath, int hunkIndex)
+    {
+        using var repo = new Repository(repoPath);
+        var head = repo.Head.Tip;
+        if (head is null) return false;
+
+        var patch = repo.Diff.Compare<Patch>(head.Tree, DiffTargets.WorkingDirectory, [relPath]);
+        var entry = patch[relPath];
+        if (entry is null) return false;
+
+        var hunks = ParseHunks(entry.Patch);
+        if (hunkIndex < 0 || hunkIndex >= hunks.Count) return false;
+
+        var headBlob = head[relPath]?.Target as Blob;
+        var headContent = headBlob is null ? "" : headBlob.GetContentText(Encoding.UTF8);
+
+        var keep = new HashSet<int>(
+            Enumerable.Range(0, hunks.Count).Where(i => i != hunkIndex));
+        var newContent = ApplySelectedHunks(headContent, hunks, keep);
+
+        var diskPath = Path.Combine(repoPath, relPath);
+        File.WriteAllText(diskPath, newContent, Encoding.UTF8);
+        return true;
+    }
+
+    /// <summary>
+    /// Stage + commit only the diff hunk at <paramref name="hunkIndex"/>,
+    /// leaving every other pending change in the working tree. Implemented
+    /// by writing a synthetic blob (HEAD + selected hunk applied) into the
+    /// index and sealing a commit on top — libgit2 doesn't expose anything
+    /// equivalent to <c>git add -p</c>, so we reach in at the index level.
+    /// The working-tree file is untouched: re-running diff(HEAD, WT) after
+    /// this returns just the leftover hunks.
+    /// </summary>
+    public bool AcceptHunk(string repoPath, string relPath, int hunkIndex, string message)
+    {
+        using var repo = new Repository(repoPath);
+        var head = repo.Head.Tip;
+        if (head is null) return false;
+
+        var patch = repo.Diff.Compare<Patch>(head.Tree, DiffTargets.WorkingDirectory, [relPath]);
+        var entry = patch[relPath];
+        if (entry is null) return false;
+
+        var hunks = ParseHunks(entry.Patch);
+        if (hunkIndex < 0 || hunkIndex >= hunks.Count) return false;
+
+        var headBlob = head[relPath]?.Target as Blob;
+        var headContent = headBlob is null ? "" : headBlob.GetContentText(Encoding.UTF8);
+
+        var staged = ApplySelectedHunks(headContent, hunks, [hunkIndex]);
+
+        // Write the staged content as a blob, then build a tree that points
+        // at it for the target path while preserving every other entry from
+        // HEAD. Then commit pointing at that tree.
+        var stagedBytes = Encoding.UTF8.GetBytes(staged);
+        using var ms = new MemoryStream(stagedBytes);
+        var blob = repo.ObjectDatabase.CreateBlob(ms, relPath);
+
+        var treeDef = TreeDefinition.From(head);
+        treeDef.Add(relPath, blob, Mode.NonExecutableFile);
+        var newTree = repo.ObjectDatabase.CreateTree(treeDef);
+
+        // Build the commit object and move the current branch ref to it.
+        // We deliberately do NOT update repo.Index or the working-tree file:
+        // re-running diff(HEAD-new, WT) then surfaces exactly the *unaccepted*
+        // hunks, which is the post-condition the editor expects.
+        var commit = repo.ObjectDatabase.CreateCommit(
+            AppSig, AppSig, message, newTree, [head], prettifyMessage: false);
+        var headRef = repo.Refs.Head.ResolveToDirectReference();
+        repo.Refs.UpdateTarget(headRef, commit.Sha);
+        return true;
+    }
+
+    private static readonly Regex HunkHeader = new(
+        @"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@",
+        RegexOptions.Compiled);
+
+    private sealed record DiffHunk(
+        int OldStart, int OldCount, int NewStart, int NewCount, List<string> Lines);
+
+    /// <summary>
+    /// Minimal unified-diff parser. Pulls every <c>@@ -a,b +c,d @@</c> hunk
+    /// out of <paramref name="diff"/> alongside its body lines (' ', '+',
+    /// '-' prefixes). Tolerant of missing counts (treated as 1, per the
+    /// unified-diff spec) and of <c>\ No newline</c> markers (skipped).
+    /// </summary>
+    private static List<DiffHunk> ParseHunks(string diff)
+    {
+        var hunks = new List<DiffHunk>();
+        if (string.IsNullOrEmpty(diff)) return hunks;
+
+        DiffHunk? cur = null;
+        foreach (var line in diff.Split('\n'))
+        {
+            var match = HunkHeader.Match(line);
+            if (match.Success)
+            {
+                cur = new DiffHunk(
+                    int.Parse(match.Groups[1].Value),
+                    match.Groups[2].Success ? int.Parse(match.Groups[2].Value) : 1,
+                    int.Parse(match.Groups[3].Value),
+                    match.Groups[4].Success ? int.Parse(match.Groups[4].Value) : 1,
+                    []);
+                hunks.Add(cur);
+                continue;
+            }
+            if (cur is null) continue;
+            if (line.StartsWith('\\')) continue; // "\ No newline at end of file"
+            if (line.Length == 0) continue;
+            var c = line[0];
+            if (c == ' ' || c == '+' || c == '-') cur.Lines.Add(line);
+        }
+        return hunks;
+    }
+
+    /// <summary>
+    /// Reconstructs file content as "<paramref name="head"/> with the
+    /// hunks whose index is in <paramref name="selected"/> applied". Hunks
+    /// whose index is not in <paramref name="selected"/> are skipped — the
+    /// corresponding HEAD lines flow through unchanged. Inputs are split on
+    /// '\n' which matches the format git uses internally.
+    /// </summary>
+    private static string ApplySelectedHunks(
+        string head, List<DiffHunk> hunks, HashSet<int> selected)
+    {
+        var headLines = head.Split('\n');
+        var output = new List<string>();
+        var i = 0; // 0-based index into headLines
+        var ordered = hunks
+            .Select((h, idx) => (Hunk: h, Idx: idx))
+            .OrderBy(t => t.Hunk.OldStart)
+            .ToList();
+
+        foreach (var (hunk, idx) in ordered)
+        {
+            // Copy unchanged HEAD lines up to (but not including) this hunk's
+            // old block. OldStart is 1-based; subtract 1 to translate.
+            var headStart0 = Math.Max(0, hunk.OldStart - 1);
+            while (i < headStart0 && i < headLines.Length)
+            {
+                output.Add(headLines[i]);
+                i++;
+            }
+
+            if (selected.Contains(idx))
+            {
+                // Emit the hunk's new state ('+' inserts, ' ' context).
+                foreach (var body in hunk.Lines)
+                {
+                    if (body.Length == 0) continue;
+                    var prefix = body[0];
+                    if (prefix == ' ' || prefix == '+') output.Add(body[1..]);
+                }
+                // Skip past the hunk's old block in HEAD.
+                i += hunk.OldCount;
+            }
+            // else: don't advance i — the next iteration's prelude copies
+            // these HEAD lines through, preserving the original text.
+        }
+
+        // Tail.
+        while (i < headLines.Length)
+        {
+            output.Add(headLines[i]);
+            i++;
+        }
+        return string.Join("\n", output);
     }
 
     /// <summary>Maps libgit2's bitfield status to our coarser editor view.</summary>

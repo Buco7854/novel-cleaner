@@ -99,6 +99,38 @@ public static class PagesEndpoints
             repos.DiscardPage(job.RepoPath, path);
             return Results.NoContent();
         });
+
+        // Reject one diff hunk on a page = revert that hunk's lines to HEAD
+        // while keeping every OTHER pending change. Hunk index is the
+        // 0-based position in the unified diff returned by GET /page.
+        group.MapPost("/reject-hunk", async (
+            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            [FromQuery] string path, [FromQuery] int index) =>
+        {
+            var job = await GetOwnedJobAsync(db, http, jobId);
+            if (job is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
+            var ok = repos.RejectHunk(job.RepoPath, path, index);
+            if (!ok) return Results.BadRequest(new { error = "hunk index out of range or no diff for path" });
+            return Results.NoContent();
+        });
+
+        // Accept one diff hunk = stage + commit only that hunk; leave the
+        // rest as working-tree changes for further triage. The editor shows
+        // the leftover hunks on the next refetch.
+        group.MapPost("/accept-hunk", async (
+            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            [FromQuery] string path, [FromQuery] int index) =>
+        {
+            var job = await GetOwnedJobAsync(db, http, jobId);
+            if (job is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
+            var ok = repos.AcceptHunk(job.RepoPath, path, index, $"Accept hunk {index} on {path}");
+            if (!ok) return Results.BadRequest(new { error = "hunk index out of range or no diff for path" });
+            return Results.NoContent();
+        });
     }
 
     private static Guid GetUserId(HttpContext http)

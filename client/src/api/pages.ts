@@ -30,3 +30,13 @@ export const commitPages = (jobId: string, message?: string) =>
 
 export const discardPage = (jobId: string, path: string) =>
   apiJson<null>(`/api/jobs/${jobId}/pages/discard?path=${encodeURIComponent(path)}`, "POST", {});
+
+export const rejectHunk = (jobId: string, path: string, index: number) =>
+  apiJson<null>(
+    `/api/jobs/${jobId}/pages/reject-hunk?path=${encodeURIComponent(path)}&index=${index}`,
+    "POST", {});
+
+export const acceptHunk = (jobId: string, path: string, index: number) =>
+  apiJson<null>(
+    `/api/jobs/${jobId}/pages/accept-hunk?path=${encodeURIComponent(path)}&index=${index}`,
+    "POST", {});

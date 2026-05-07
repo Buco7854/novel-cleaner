@@ -318,6 +318,12 @@
     "commitNothing": "Rien à valider.",
     "commitFailed": "Validation échouée",
     "dirtyCount": "{{n}} page(s) modifiée(s)",
-    "emptyPlaceholder": "Page vide."
+    "emptyPlaceholder": "Page vide.",
+    "acceptHunk": "Accepter",
+    "acceptHunkHint": "Valide ce bloc dans un commit et laisse les autres en attente.",
+    "acceptFailed": "Acceptation échouée",
+    "rejectHunk": "Rejeter",
+    "rejectHunkHint": "Annule ce bloc et garde les autres modifications.",
+    "rejectFailed": "Rejet échoué"
   }
 }

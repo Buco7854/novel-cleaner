@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, FileText, Loader2, RotateCcw, Save } from "lucide-react";
+import { ArrowLeft, Check, FileText, Loader2, RotateCcw, Save, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
-import { commitPages, discardPage, getPage, listPages, PageEntry, writePage } from "../api/pages";
+import { acceptHunk, commitPages, discardPage, getPage, listPages, PageEntry, rejectHunk, writePage } from "../api/pages";
 import { getJob } from "../api/jobs";
 import { useToast } from "../contexts/ToastContext";
 
@@ -169,6 +169,7 @@ export function EditorPage() {
             </div>
           ) : (
             <PageView
+              jobId={id}
               path={page.data.path}
               status={page.data.status}
               diff={page.data.diff}
@@ -246,6 +247,7 @@ function FileTree({ pages, selected, onSelect, loading }: FileTreeProps) {
 }
 
 interface PageViewProps {
+  jobId: string;
   path: string;
   status: string;
   diff: string;
@@ -257,7 +259,7 @@ interface PageViewProps {
   dirty: boolean;
 }
 
-function PageView({ path, status, diff, draft, onChange, onDiscard, discarding, saving, dirty }: PageViewProps) {
+function PageView({ jobId, path, status, diff, draft, onChange, onDiscard, discarding, saving, dirty }: PageViewProps) {
   const { t } = useTranslation();
   const name = path.replace(/^pages\//, "");
   const isModified = status === "Modified";
@@ -299,38 +301,135 @@ function PageView({ path, status, diff, draft, onChange, onDiscard, discarding, 
           placeholder={t("editor.emptyPlaceholder") ?? ""}
         />
         <div className="min-h-0 overflow-y-auto border-stone-200 bg-stone-50 p-3 dark:border-stone-800 dark:bg-stone-900/40 lg:border-l">
-          <DiffView diff={diff} />
+          <DiffView jobId={jobId} path={path} diff={diff} />
         </div>
       </div>
     </>
   );
 }
 
-function DiffView({ diff }: { diff: string }) {
+interface ParsedHunk {
+  header: string;
+  body: string[];
+}
+
+/**
+ * Splits a unified diff into hunks for inline accept/reject controls. The
+ * pre-hunk preamble (file headers, "diff --git", "index …") is dropped — the
+ * editor already shows the file path in the toolbar, so repeating it here
+ * just adds noise.
+ */
+function parseDiffHunks(diff: string): ParsedHunk[] {
+  const hunks: ParsedHunk[] = [];
+  if (!diff) return hunks;
+  let cur: ParsedHunk | null = null;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("@@")) {
+      cur = { header: line, body: [] };
+      hunks.push(cur);
+      continue;
+    }
+    if (!cur) continue;
+    if (line.startsWith("\\")) continue;
+    const c = line[0];
+    if (c === " " || c === "+" || c === "-") cur.body.push(line);
+  }
+  return hunks;
+}
+
+function DiffView({ jobId, path, diff }: { jobId: string; path: string; diff: string }) {
   const { t } = useTranslation();
-  if (!diff || !diff.trim()) {
+  const toast = useToast();
+  const qc = useQueryClient();
+
+  const hunks = useMemo(() => parseDiffHunks(diff), [diff]);
+
+  const reject = useMutation({
+    mutationFn: (index: number) => rejectHunk(jobId, path, index),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["page", jobId, path] });
+      qc.invalidateQueries({ queryKey: ["pages", jobId] });
+    },
+    onError: (e) => toast.error(t("editor.rejectFailed"), e instanceof Error ? e.message : ""),
+  });
+
+  const accept = useMutation({
+    mutationFn: (index: number) => acceptHunk(jobId, path, index),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["page", jobId, path] });
+      qc.invalidateQueries({ queryKey: ["pages", jobId] });
+    },
+    onError: (e) => toast.error(t("editor.acceptFailed"), e instanceof Error ? e.message : ""),
+  });
+
+  if (hunks.length === 0) {
     return <div className="text-xs italic text-stone-500">{t("editor.noDiff")}</div>;
   }
-  const lines = diff.split("\n");
+
+  // Track which hunk is mid-flight so we can disable just its buttons,
+  // not the whole panel — react-query exposes the mutate() argument as
+  // .variables for the in-flight call.
+  const busy = reject.isPending
+    ? { idx: reject.variables, kind: "reject" as const }
+    : accept.isPending
+    ? { idx: accept.variables, kind: "accept" as const }
+    : null;
+
   return (
-    <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-snug">
-      {lines.map((line, i) => {
-        let cls = "";
-        if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff ") || line.startsWith("index ")) {
-          cls = "text-stone-500";
-        } else if (line.startsWith("@@")) {
-          cls = "text-violet-600 dark:text-violet-400";
-        } else if (line.startsWith("+")) {
-          cls = "bg-emerald-100/70 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200";
-        } else if (line.startsWith("-")) {
-          cls = "bg-rose-100/70 text-rose-900 dark:bg-rose-500/15 dark:text-rose-200";
-        }
-        return (
-          <div key={i} className={cls}>
-            {line || " "}
+    <div className="space-y-3">
+      {hunks.map((h, i) => (
+        <div
+          key={i}
+          className="overflow-hidden rounded border border-stone-200 dark:border-stone-700"
+        >
+          <div className="flex items-center gap-2 border-b border-stone-200 bg-stone-100 px-2 py-1 text-xs dark:border-stone-700 dark:bg-stone-800">
+            <span className="flex-1 truncate font-mono text-violet-600 dark:text-violet-300">
+              {h.header}
+            </span>
+            <button
+              onClick={() => accept.mutate(i)}
+              disabled={busy?.idx === i}
+              className="btn-ghost h-6 px-2 text-xs"
+              title={t("editor.acceptHunkHint")}
+            >
+              {busy?.idx === i && busy.kind === "accept" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ThumbsUp className="h-3 w-3" />
+              )}
+              {t("editor.acceptHunk")}
+            </button>
+            <button
+              onClick={() => reject.mutate(i)}
+              disabled={busy?.idx === i}
+              className="btn-ghost h-6 px-2 text-xs"
+              title={t("editor.rejectHunkHint")}
+            >
+              {busy?.idx === i && busy.kind === "reject" ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <ThumbsDown className="h-3 w-3" />
+              )}
+              {t("editor.rejectHunk")}
+            </button>
           </div>
-        );
-      })}
-    </pre>
+          <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-snug">
+            {h.body.map((line, j) => {
+              let cls = "";
+              if (line.startsWith("+")) {
+                cls = "bg-emerald-100/70 text-emerald-900 dark:bg-emerald-500/15 dark:text-emerald-200";
+              } else if (line.startsWith("-")) {
+                cls = "bg-rose-100/70 text-rose-900 dark:bg-rose-500/15 dark:text-rose-200";
+              }
+              return (
+                <div key={j} className={cls}>
+                  {line || " "}
+                </div>
+              );
+            })}
+          </pre>
+        </div>
+      ))}
+    </div>
   );
 }

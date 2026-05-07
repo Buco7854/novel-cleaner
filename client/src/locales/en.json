@@ -318,6 +318,12 @@
     "commitNothing": "Nothing to commit.",
     "commitFailed": "Commit failed",
     "dirtyCount": "{{n}} modified page(s)",
-    "emptyPlaceholder": "Empty page."
+    "emptyPlaceholder": "Empty page.",
+    "acceptHunk": "Accept",
+    "acceptHunkHint": "Commit this hunk only and leave the rest pending.",
+    "acceptFailed": "Accept failed",
+    "rejectHunk": "Reject",
+    "rejectHunkHint": "Discard this hunk and keep the others.",
+    "rejectFailed": "Reject failed"
   }
 }
