@@ -150,6 +150,7 @@ public sealed class JobWorker(
                     var bestRequested = 0;
                     var bestRawText = "";
                     var attemptsMade = 0;
+                    var prevItemsKey = "";
 
                     for (var attempt = 1; attempt <= MaxVerbatimAttempts; attempt++)
                     {
@@ -176,6 +177,15 @@ public sealed class JobWorker(
                         // line below will report it; no per-attempt line on
                         // the happy path.
                         if (applied.Count == lastResult.Items.Count) break;
+
+                        // Convergence — if the LLM keeps returning the exact
+                        // same items, further retries can't improve the
+                        // outcome (typically a hallucinated needle that isn't
+                        // in the source). Stop wasting API calls.
+                        var itemsKey = string.Join("",
+                            lastResult.Items.Select(i => i.Remove));
+                        if (itemsKey == prevItemsKey) break;
+                        prevItemsKey = itemsKey;
 
                         // Partial. Only emit a per-attempt warn when we're
                         // going to retry — the last failed attempt is folded
