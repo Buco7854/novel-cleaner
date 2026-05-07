@@ -1,12 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HubConnectionState } from "@microsoft/signalr";
-import { ArrowLeft, ChevronDown, ChevronRight, Download, FileText, FolderInput, Loader2, Pause, Play } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, FileText, FolderInput, Loader2, Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { copyToDrop, downloadUrl, getJob, JobStatus, pauseJob, resumeJob } from "../api/jobs";
 import { createJobHub, JobLogEvent } from "../api/jobsHub";
+import { finalizeJob, reprocessJob } from "../api/reviews";
 import { JobStatusPill } from "../components/JobStatusPill";
+import { ReviewPanel } from "../components/ReviewPanel";
 import { useToast } from "../contexts/ToastContext";
 import { format, timeOnly } from "../utils/date";
 
@@ -44,6 +46,26 @@ export function JobDetailPage() {
     mutationFn: () => resumeJob(id),
     onSuccess: () => { setStatus("Running"); qc.invalidateQueries({ queryKey: ["jobs"] }); },
     onError: (e) => toast.error(t("jobDetail.resumeFailed"), e instanceof Error ? e.message : ""),
+  });
+
+  const finalize = useMutation({
+    mutationFn: () => finalizeJob(id),
+    onSuccess: () => {
+      toast.success(t("review.finalizeQueued"));
+      qc.invalidateQueries({ queryKey: ["job", id] });
+      qc.invalidateQueries({ queryKey: ["jobs"] });
+    },
+    onError: (e) => toast.error(t("review.actionFailed"), e instanceof Error ? e.message : ""),
+  });
+
+  const nav = useNavigate();
+  const reprocess = useMutation({
+    mutationFn: () => reprocessJob(id),
+    onSuccess: ({ id: newId }) => {
+      toast.success(t("review.reprocessQueued"));
+      nav(`/jobs/${newId}`);
+    },
+    onError: (e) => toast.error(t("review.actionFailed"), e instanceof Error ? e.message : ""),
   });
 
   useEffect(() => {
@@ -173,6 +195,28 @@ export function JobDetailPage() {
             {t("jobDetail.resume")}
           </button>
         )}
+        {status === "AwaitingReview" && (
+          <button
+            className="btn-primary shrink-0"
+            onClick={() => finalize.mutate()}
+            disabled={finalize.isPending}
+            title={t("review.finalizeHint")}
+          >
+            {finalize.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            {t("review.finalize")}
+          </button>
+        )}
+        {status === "Completed" && job.data.hasOutput && (
+          <button
+            className="btn-secondary shrink-0"
+            onClick={() => reprocess.mutate()}
+            disabled={reprocess.isPending}
+            title={t("review.reprocessHint")}
+          >
+            {reprocess.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+            {t("review.reprocess")}
+          </button>
+        )}
         {job.data.hasOutput && job.data.canDrop && (
           <button
             className="btn-secondary shrink-0"
@@ -227,6 +271,15 @@ export function JobDetailPage() {
           <div className="h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
             <div className="h-full bg-stone-900 transition-all dark:bg-stone-100" style={{ width: `${progress ?? 0}%` }} />
           </div>
+        </div>
+      )}
+
+      {status === "AwaitingReview" && (
+        <div className="space-y-2">
+          <div className="rounded border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+            {t("review.awaitingBanner")}
+          </div>
+          <ReviewPanel jobId={id} />
         </div>
       )}
 
