@@ -175,6 +175,104 @@ public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo>
             new CheckoutOptions { CheckoutModifiers = CheckoutModifiers.Force });
     }
 
+    /// <summary>
+    /// Reads a page's content as it stands in the HEAD commit. Used by
+    /// finalize, which must export based on the *committed* state of the
+    /// book — not whatever is in the working tree.
+    /// </summary>
+    public string ReadHeadContent(string repoPath, string relPath)
+    {
+        using var repo = new Repository(repoPath);
+        var blob = repo.Head.Tip?[relPath]?.Target as Blob;
+        return blob is null ? "" : blob.GetContentText(Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// Reads the page as it was at the *initial* commit (raw extraction, no
+    /// edits). Finalize diffs HEAD vs initial to compute the removal set
+    /// that gets applied to the original HTML.
+    /// </summary>
+    public string ReadInitialContent(string repoPath, string relPath)
+    {
+        using var repo = new Repository(repoPath);
+        var first = repo.Commits.QueryBy(new CommitFilter
+        {
+            SortBy = CommitSortStrategies.Topological | CommitSortStrategies.Reverse,
+        }).FirstOrDefault();
+        var blob = first?[relPath]?.Target as Blob;
+        return blob is null ? "" : blob.GetContentText(Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// Reads the side-car that records which EPUB zip-entry a page came from,
+    /// so finalize can write the cleaned bytes back to the right archive
+    /// member. Returns null when the side-car is missing (jobs created
+    /// before this layout, or a hand-edited repo).
+    /// </summary>
+    public string? ReadDocName(string repoPath, string relPath)
+    {
+        var disk = Path.Combine(repoPath, relPath + ".source");
+        return File.Exists(disk) ? File.ReadAllText(disk, Encoding.UTF8) : null;
+    }
+
+    /// <summary>
+    /// Locates the page that mirrors a given EPUB document (by side-car
+    /// match) and writes <paramref name="content"/> to its working-tree
+    /// file. The worker uses this to land its post-LLM output on the right
+    /// page without having to track index↔name mapping itself.
+    /// </summary>
+    public bool WritePageByDocName(string repoPath, string documentName, string content)
+    {
+        var pagesDir = Path.Combine(repoPath, "pages");
+        if (!Directory.Exists(pagesDir)) return false;
+        foreach (var src in Directory.EnumerateFiles(pagesDir, "*.source"))
+        {
+            var name = File.ReadAllText(src, Encoding.UTF8);
+            if (!string.Equals(name, documentName, StringComparison.Ordinal)) continue;
+            var pageDisk = src[..^".source".Length];
+            File.WriteAllText(pageDisk, content, Encoding.UTF8);
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True when HEAD diverges from the initial commit (= the book has been
+    /// edited since extraction). Used by the worker to decide whether a
+    /// "found nothing" rerun should keep the job in AwaitingReview or settle
+    /// back to Completed.
+    /// </summary>
+    public bool HasEditsAgainstInitial(string repoPath)
+    {
+        using var repo = new Repository(repoPath);
+        var head = repo.Head.Tip;
+        var first = repo.Commits.QueryBy(new CommitFilter
+        {
+            SortBy = CommitSortStrategies.Topological | CommitSortStrategies.Reverse,
+        }).FirstOrDefault();
+        if (head is null || first is null) return false;
+        if (head.Sha == first.Sha) return false;
+        var patch = repo.Diff.Compare<TreeChanges>(first.Tree, head.Tree);
+        return patch.Count > 0;
+    }
+
+    /// <summary>
+    /// Stage + commit using a private signature. Same shape as
+    /// <see cref="CommitAll"/> but without the no-op short-circuit, so the
+    /// worker can seal a "Pre-AI baseline" commit even when the working
+    /// tree hasn't actually diverged yet.
+    /// </summary>
+    public bool Commit(string repoPath, string message, bool allowEmpty = false)
+    {
+        using var repo = new Repository(repoPath);
+        Commands.Stage(repo, "*");
+        var status = repo.RetrieveStatus();
+        if (!status.IsDirty && !allowEmpty) return false;
+        repo.Commit(message, AppSig, AppSig,
+            new CommitOptions { AllowEmptyCommit = allowEmpty });
+        return true;
+    }
+
     /// <summary>Maps libgit2's bitfield status to our coarser editor view.</summary>
     private static PageStatus MapStatus(FileStatus s)
     {

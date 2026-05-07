@@ -125,11 +125,14 @@ public sealed class JobWorker(
             {
                 if (isRerun)
                 {
-                    // Rerun found nothing new — don't touch the output file or
-                    // throw away curated reviews. Just settle back into the
-                    // appropriate idle state.
-                    var hasReviews = await db.ChapterReviews.AnyAsync(r => r.JobId == jobId, ct);
-                    job.Status = hasReviews ? JobStatus.AwaitingReview : JobStatus.Completed;
+                    // Rerun found nothing new — leave HEAD/working-tree alone,
+                    // settle back to whatever the editor showed before. If the
+                    // job already had pending edits (HEAD diverged from the
+                    // initial commit), we keep AwaitingReview so the user can
+                    // still finalize.
+                    var hasEdits = !string.IsNullOrEmpty(job.RepoPath)
+                        && bookRepo.HasEditsAgainstInitial(job.RepoPath);
+                    job.Status = hasEdits ? JobStatus.AwaitingReview : JobStatus.Completed;
                     await db.SaveChangesAsync(ct);
                     await logger.LogAsync(jobId, "clean", "Rerun: no new matches.", ct);
                     await logger.UpdateStatusAsync(jobId, job.Status, 100, 0, 0, ct);
@@ -152,8 +155,9 @@ public sealed class JobWorker(
             await logger.UpdateStatusAsync(jobId, JobStatus.Running, 0, 0, queueWork.Count, ct);
 
             var updates = new Dictionary<string, byte[]>();
-            // Review mode collects the matchable proposals per chapter so they
-            // can be persisted as ReviewProposal rows after the parallel loop.
+            // Per-doc list of items the LLM proposed and that matched
+            // verbatim — we replay these at the end of the loop to build the
+            // post-AI visible text that lands in the editor's working tree.
             // Same lock as `updates` (the worker holds `lock(updates)` across
             // both writes so the two stay consistent without a second lock).
             var proposalsPerDoc = new Dictionary<string, IReadOnlyList<AppliedRemoval>>();
@@ -286,98 +290,60 @@ public sealed class JobWorker(
             });
             await Task.WhenAll(tasks);
 
-            // A rerun ALWAYS goes through the review-persist branch (even if
-            // the original job ran in non-review mode), so the user gets a
-            // chance to review the new findings before they overwrite a
-            // previously-cleaned file.
-            if (job.ReviewBeforeApplying || isRerun)
+            // Land every doc-with-edits in the working tree. The editor will
+            // surface this as a diff against HEAD (= the previous committed
+            // state, typically the initial extraction). The user reviews +
+            // optionally edits + commits, and finalize exports HEAD as EPUB.
+            //
+            // A rerun goes through the SAME path even when the original job
+            // ran in non-review mode: any edits the user committed in the
+            // editor since are preserved (they're in HEAD), the new pass
+            // surfaces fresh suggestions on top of HEAD as working-tree
+            // changes — so the user explicitly sees what was just found.
+            foreach (var work in queueWork)
             {
-                // Load existing reviews (if any) to find-or-create per chapter
-                // and to dedupe LLM proposals on rerun. Cheap — bounded by
-                // chapters-with-hits.
-                var existingReviews = await db.ChapterReviews
-                    .Include(r => r.Proposals)
-                    .Where(r => r.JobId == job.Id)
-                    .ToListAsync(ct);
-                var existingByDoc = existingReviews.ToDictionary(r => r.DocumentName);
+                if (!proposalsPerDoc.TryGetValue(work.Doc.Name, out var applied)) continue;
+                if (applied.Count == 0) continue;
+                if (!updates.TryGetValue(work.Doc.Name, out var bytes)) continue;
 
-                var orderIndex = existingReviews.Count == 0
-                    ? 0
-                    : existingReviews.Max(r => r.OrderIndex) + 1;
-                var addedProposals = 0;
+                // The cleaned visible text drives the editor view. Re-extract
+                // from the cleaned bytes rather than computing in-memory so
+                // the result matches what ReadHtmlDocuments + ExtractText
+                // would produce on round-trip.
+                var newText = EpubHandler.ExtractText(bytes);
+                var ok = bookRepo.WritePageByDocName(job.RepoPath!, work.Doc.Name, newText);
+                if (!ok)
+                    await logger.LogAsync(jobId, "warn",
+                        $"{work.Doc.Name}: no matching page in editor repo — edit lost",
+                        ct, groupId: work.Doc.Name);
+            }
 
-                foreach (var work in queueWork)
+            // Auto-mode (ReviewBeforeApplying = false on a fresh non-rerun
+            // job): commit the worker's pass and ship the EPUB without user
+            // intervention. AwaitingReview otherwise — the user reviews,
+            // edits, then hits Finalize from the editor.
+            if (!job.ReviewBeforeApplying && !isRerun)
+            {
+                bookRepo.Commit(job.RepoPath!, "AI cleanup pass");
+                var finalizer = sp.GetRequiredService<JobFinalizer>();
+                var ok = await finalizer.FinalizeAsync(jobId, ct);
+                if (!ok)
                 {
-                    var visibleText = work.Excerpts.Count == 1
-                        ? work.Excerpts[0]
-                        : string.Join("\n\n", work.Excerpts);
-
-                    if (!existingByDoc.TryGetValue(work.Doc.Name, out var review))
-                    {
-                        review = new ChapterReview
-                        {
-                            JobId = job.Id,
-                            DocumentName = work.Doc.Name,
-                            VisibleText = visibleText,
-                            OrderIndex = orderIndex++,
-                        };
-                        db.ChapterReviews.Add(review);
-                    }
-
-                    if (!proposalsPerDoc.TryGetValue(work.Doc.Name, out var applied)) continue;
-
-                    // Dedupe: don't re-add an LLM proposal whose verbatim text
-                    // already exists for this chapter. Avoids accumulating
-                    // dupes on every rerun.
-                    var existingTexts = new HashSet<string>(
-                        review.Proposals
-                            .Where(p => p.Source == ProposalSource.Llm)
-                            .Select(p => p.Text),
-                        StringComparer.Ordinal);
-                    foreach (var a in applied)
-                    {
-                        if (!existingTexts.Add(a.Removed)) continue;
-                        review.Proposals.Add(new ReviewProposal
-                        {
-                            Text = a.Removed,
-                            Reason = a.Reason,
-                            Source = ProposalSource.Llm,
-                            // First pass on a fresh job: accept by default
-                            // (review = "veto unwanted removals"). Rerun: the
-                            // user has already curated the original set, so
-                            // surface new findings as Pending — they must
-                            // explicitly approve them.
-                            Decision = isRerun
-                                ? ProposalDecision.Pending
-                                : ProposalDecision.Accepted,
-                        });
-                        addedProposals++;
-                    }
+                    job.Status = JobStatus.Completed;
+                    job.CompletedAt = DateTimeOffset.UtcNow;
+                    await db.SaveChangesAsync(ct);
                 }
-
-                job.Status = JobStatus.AwaitingReview;
-                await db.SaveChangesAsync(ct);
-                var summary = isRerun
-                    ? $"Rerun complete — {addedProposals} new proposal(s) pending across {queueWork.Count} chapter(s)."
-                    : $"Awaiting your review — {queueWork.Count} chapter(s), {addedProposals} proposal(s).";
-                await logger.LogAsync(jobId, "summary", summary, ct);
-                await logger.UpdateStatusAsync(
-                    jobId, JobStatus.AwaitingReview, 100, totalCount, totalCount, ct);
                 return;
             }
 
-            var outPath = OutputPath(job);
-            EpubHandler.WriteUpdatedEpub(job.InputStoragePath, outPath, updates);
-            job.OutputStoragePath = outPath;
-            job.RemovedCount = totalRemoved;
-            job.Status = JobStatus.Completed;
-            job.CompletedAt = DateTimeOffset.UtcNow;
+            job.Status = JobStatus.AwaitingReview;
             await db.SaveChangesAsync(ct);
-
-            await logger.LogAsync(jobId, "summary",
-                $"Done — removed {totalRemoved} watermark item(s).", ct);
-            await DropFolderHelper.TryCopyJobOutputAsync(job, appSettings, outPath, logger, users, auth.CurrentValue, ct);
-            await logger.UpdateStatusAsync(jobId, JobStatus.Completed, 100, totalCount, totalCount, ct);
+            var summary = isRerun
+                ? $"Rerun complete — fresh suggestions waiting in the editor across {queueWork.Count} chapter(s)."
+                : $"Awaiting your review — {queueWork.Count} chapter(s), {totalRemoved} suggestion(s).";
+            await logger.LogAsync(jobId, "summary", summary, ct);
+            await logger.UpdateStatusAsync(
+                jobId, JobStatus.AwaitingReview, 100, totalCount, totalCount, ct);
         }
         catch (OperationCanceledException)
         {

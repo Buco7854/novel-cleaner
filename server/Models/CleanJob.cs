@@ -44,9 +44,9 @@ public class CleanJob
     /// <summary>
     /// Set by the "rerun AI" endpoint to ask the worker to re-run the LLM
     /// identification pass against this same job — without cloning to a new
-    /// file. New LLM proposals are appended to the existing ChapterReviews
-    /// as Pending so the user explicitly sees what was just found. Cleared
-    /// by the worker at the start of every run.
+    /// file. The fresh suggestions land in the editor's working tree on top
+    /// of HEAD so the user explicitly sees what was just found. Cleared by
+    /// the worker at the start of every run.
     /// </summary>
     public bool RerunRequested { get; set; }
 
@@ -64,7 +64,6 @@ public class CleanJob
     public DateTimeOffset? CompletedAt { get; set; }
 
     public ICollection<JobLogEntry> Logs { get; set; } = [];
-    public ICollection<ChapterReview> Reviews { get; set; } = [];
 }
 
 public class JobLogEntry

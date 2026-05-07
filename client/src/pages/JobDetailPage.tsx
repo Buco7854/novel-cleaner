@@ -8,7 +8,6 @@ import { copyToDrop, downloadUrl, getJob, JobStatus, pauseJob, resumeJob } from 
 import { createJobHub, JobLogEvent } from "../api/jobsHub";
 import { finalizeJob, reprocessJob, rerunAi } from "../api/reviews";
 import { JobStatusPill } from "../components/JobStatusPill";
-import { ReviewPanel } from "../components/ReviewPanel";
 import { useToast } from "../contexts/ToastContext";
 import { format, timeOnly } from "../utils/date";
 
@@ -305,11 +304,8 @@ export function JobDetailPage() {
       )}
 
       {status === "AwaitingReview" && (
-        <div className="space-y-2">
-          <div className="rounded border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
-            {t("review.awaitingBanner")}
-          </div>
-          <ReviewPanel jobId={id} />
+        <div className="rounded border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+          {t("review.awaitingBanner")}
         </div>
       )}
 
