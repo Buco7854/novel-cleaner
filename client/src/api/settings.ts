@@ -16,6 +16,7 @@ export interface UserSettings {
   patterns: string[];
   scanAll: boolean;
   contextWindow: number;
+  reviewBeforeApplying: boolean;
 }
 
 export interface SettingsResponse {
@@ -36,6 +37,7 @@ export interface UserSettingsUpdate {
   patterns: string[];
   scanAll: boolean;
   contextWindow: number;
+  reviewBeforeApplying: boolean;
 }
 
 export const fetchSettings    = () => api<SettingsResponse>("/api/settings/");

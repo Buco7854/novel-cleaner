@@ -194,6 +194,7 @@ public static class OpdsEndpoints
                 ScanAll = userS.ScanAll,
                 PatternsJson = userS.PatternsJson,
                 ContextWindow = userS.ContextWindow,
+                ReviewBeforeApplying = userS.ReviewBeforeApplying,
                 // Admin-managed
                 MaxWorkers = appS.MaxWorkers,
                 Model = appS.Model,

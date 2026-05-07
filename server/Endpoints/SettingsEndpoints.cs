@@ -52,6 +52,7 @@ public static class SettingsEndpoints
             s.PatternsJson = JsonSerializer.Serialize(dto.Patterns ?? []);
             s.ScanAll = dto.ScanAll;
             s.ContextWindow = Math.Max(100, dto.ContextWindow);
+            s.ReviewBeforeApplying = dto.ReviewBeforeApplying;
             s.UpdatedAt = DateTimeOffset.UtcNow;
 
             await db.SaveChangesAsync();
@@ -107,6 +108,7 @@ public static class SettingsEndpoints
             patterns = JsonSerializer.Deserialize<List<string>>(userS.PatternsJson) ?? [],
             scanAll = userS.ScanAll,
             contextWindow = userS.ContextWindow,
+            reviewBeforeApplying = userS.ReviewBeforeApplying,
         },
     };
 
@@ -128,5 +130,6 @@ public static class SettingsEndpoints
     public sealed record UserSettingsDto(
         List<string>? Patterns,
         bool ScanAll,
-        int ContextWindow);
+        int ContextWindow,
+        bool ReviewBeforeApplying);
 }

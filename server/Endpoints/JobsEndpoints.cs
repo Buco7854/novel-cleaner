@@ -36,6 +36,7 @@ public static class JobsEndpoints
                     sizeBytes = j.FileSizeBytes,
                     status = j.Status.ToString(),
                     scanAll = j.ScanAll,
+                    reviewBeforeApplying = j.ReviewBeforeApplying,
                     model = j.Model,
                     removed = j.RemovedCount,
                     createdAt = j.CreatedAt,
@@ -84,6 +85,7 @@ public static class JobsEndpoints
                 status = job.Status.ToString(),
                 model = job.Model,
                 scanAll = job.ScanAll,
+                reviewBeforeApplying = job.ReviewBeforeApplying,
                 patternCount,
                 contextWindow = job.ContextWindow,
                 maxWorkers = job.MaxWorkers,
@@ -179,6 +181,7 @@ public static class JobsEndpoints
 
             var scanAllOverride = bool.TryParse(form["scanAll"], out var sa) ? sa : (bool?)null;
             var patternsOverride = form["patterns"].ToString();
+            var reviewOverride = bool.TryParse(form["reviewBeforeApplying"], out var rba) ? rba : (bool?)null;
 
             Directory.CreateDirectory(storage.Value.UploadDirectory);
 
@@ -207,6 +210,7 @@ public static class JobsEndpoints
                         ? userS.PatternsJson
                         : patternsOverride,
                     ContextWindow = userS.ContextWindow,
+                    ReviewBeforeApplying = reviewOverride ?? userS.ReviewBeforeApplying,
                     // Admin-managed (AppSettings)
                     MaxWorkers = appS.MaxWorkers,
                     Model = appS.Model,

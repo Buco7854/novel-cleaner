@@ -44,6 +44,7 @@ export function SettingsPage() {
       patterns: userForm?.patterns ?? [],
       scanAll: userForm?.scanAll ?? false,
       contextWindow: userForm?.contextWindow ?? 1000,
+      reviewBeforeApplying: userForm?.reviewBeforeApplying ?? true,
     }),
     onSuccess: () => { toast.success(t("settings.saved")); qc.invalidateQueries({ queryKey: ["settings"] }); },
     onError: (e) => toast.error("Save failed", e instanceof Error ? e.message : ""),
@@ -192,6 +193,19 @@ export function SettingsPage() {
                 onChange={(e) => updateUser("contextWindow", Math.max(100, +e.target.value || 1000))} />
             </Field>
           </div>
+          <Field
+            label={t("settings.scanning.reviewBeforeApplying")}
+            hint={t("settings.scanning.reviewBeforeApplyingHint")}
+          >
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={userForm.reviewBeforeApplying}
+                onChange={(e) => updateUser("reviewBeforeApplying", e.target.checked)}
+              />
+              <span>{t("settings.scanning.reviewBeforeApplyingLabel")}</span>
+            </label>
+          </Field>
         </Section>
 
         <Section title={t("settings.patterns.title")} subtitle={t("settings.patterns.subtitle")}>

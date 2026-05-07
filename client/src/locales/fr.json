@@ -154,7 +154,10 @@
       "fullPage": "Analyse page entière",
       "contextWindow": "Fenêtre de contexte (caractères)",
       "contextWindowHint": "S'applique uniquement en mode Motif — caractères de contexte conservés autour de chaque correspondance. Ignoré en mode page entière (la page entière est envoyée).",
-      "parallelRequests": "Requêtes LLM parallèles"
+      "parallelRequests": "Requêtes LLM parallèles",
+      "reviewBeforeApplying": "Vérifier avant d'appliquer",
+      "reviewBeforeApplyingLabel": "Faire une pause pour vérification après le passage du LLM",
+      "reviewBeforeApplyingHint": "Lorsque activé, l'EPUB nettoyé n'est pas écrit tant que vous n'avez pas accepté ou rejeté chaque suppression proposée. Le fichier original n'est jamais modifié pendant la vérification."
     },
     "prompt": {
       "title": "Invite système",

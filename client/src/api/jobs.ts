@@ -1,6 +1,13 @@
 import { api } from "./client";
 
-export type JobStatus = "Queued" | "Running" | "Paused" | "Completed" | "Failed" | "Canceled";
+export type JobStatus =
+  | "Queued"
+  | "Running"
+  | "Paused"
+  | "Completed"
+  | "Failed"
+  | "Canceled"
+  | "AwaitingReview";
 
 export interface JobSummary {
   id: string;
@@ -8,6 +15,7 @@ export interface JobSummary {
   sizeBytes: number;
   status: JobStatus;
   scanAll: boolean;
+  reviewBeforeApplying: boolean;
   model: string;
   removed: number;
   createdAt: string;
@@ -38,6 +46,7 @@ export interface JobDetail {
   status: JobStatus;
   model: string;
   scanAll: boolean;
+  reviewBeforeApplying: boolean;
   patternCount: number;
   contextWindow: number;
   maxWorkers: number;
@@ -65,13 +74,20 @@ export const resumeJob  = (id: string) => api<{ ok: boolean }>(`/api/jobs/${id}/
 
 export async function uploadJobs(
   files: File[],
-  overrides: { scanAll?: boolean; model?: string; patterns?: string[] }
+  overrides: {
+    scanAll?: boolean;
+    model?: string;
+    patterns?: string[];
+    reviewBeforeApplying?: boolean;
+  }
 ): Promise<string[]> {
   const fd = new FormData();
   for (const f of files) fd.append("files", f, f.name);
   if (overrides.scanAll !== undefined) fd.append("scanAll", String(overrides.scanAll));
   if (overrides.model)   fd.append("model", overrides.model);
   if (overrides.patterns) fd.append("patterns", JSON.stringify(overrides.patterns));
+  if (overrides.reviewBeforeApplying !== undefined)
+    fd.append("reviewBeforeApplying", String(overrides.reviewBeforeApplying));
   const result = await api<{ ids: string[] }>("/api/jobs/", { method: "POST", body: fd });
   return result.ids;
 }
