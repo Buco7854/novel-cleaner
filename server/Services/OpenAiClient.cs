@@ -49,8 +49,6 @@ public sealed class OpenAiClient(HttpClient http, ILogger<OpenAiClient> log)
           ]
         }
 
-        The items array is a DELETION LIST. Every entry you put in it WILL be deleted from the document. Only include text you have decided to remove. NEVER use this array to enumerate candidates you considered, decisions to keep something, or reasoning notes — putting "this is legitimate dialogue" or "not to be removed" entries here will silently delete real prose. If nothing in the input qualifies, return {"items": []}. The "reason" field is a short label for the deletion (e.g. "watermark", "scraper ad"), never a "keep this" or "do not flag" comment.
-
         Rules:
         - Copy the text to remove VERBATIM — character-for-character from the input. No paraphrasing, summarising, or truncation.
         - Return the SMALLEST substring that captures the watermark / inserted text. Do NOT include any surrounding prose. If a watermark is embedded mid-sentence — for example "A familiar shape ⟦meta:tk-8821-X⟧ moved across the wall" — the item to remove is "⟦meta:tk-8821-X⟧" (just the inserted token), NEVER the whole sentence. Removing surrounding narrative text is unacceptable; it deletes the author's prose.
