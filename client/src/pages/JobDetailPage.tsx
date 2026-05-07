@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { HubConnectionState } from "@microsoft/signalr";
-import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, FileText, FolderInput, Loader2, Pause, Play, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, ChevronRight, Download, FileText, FolderInput, Loader2, Pause, Pencil, Play, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -185,6 +185,15 @@ export function JobDetailPage() {
         <FileText className="h-5 w-5 shrink-0 text-stone-400" />
         <h1 className="min-w-0 flex-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">{job.data.fileName}</h1>
         {status && <JobStatusPill status={status} />}
+        {status && status !== "Queued" && (
+          <Link
+            to={`/jobs/${id}/editor`}
+            className="btn-secondary shrink-0"
+            title={t("editor.openHint")}
+          >
+            <Pencil className="h-4 w-4" /> {t("editor.open")}
+          </Link>
+        )}
         {status === "Running" && (
           <button
             className="btn-secondary shrink-0"

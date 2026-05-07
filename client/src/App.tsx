@@ -6,6 +6,7 @@ import { useAuth } from "./contexts/AuthContext";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { BrowsePage } from "./pages/BrowsePage";
 import { DashboardPage } from "./pages/DashboardPage";
+import { EditorPage } from "./pages/EditorPage";
 import { JobDetailPage } from "./pages/JobDetailPage";
 import { JobsPage } from "./pages/JobsPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -38,6 +39,7 @@ export default function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/jobs" element={<JobsPage />} />
         <Route path="/jobs/:id" element={<JobDetailPage />} />
+        <Route path="/jobs/:id/editor" element={<EditorPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/sources" element={<SourcesPage />} />
         <Route path="/sources/:id/browse" element={<BrowsePage />} />

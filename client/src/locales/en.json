@@ -295,5 +295,29 @@
       "submit": "Update",
       "success": "Password updated"
     }
+  },
+  "editor": {
+    "open": "Editor",
+    "openHint": "Open the page editor (edit, see diff, commit).",
+    "backToJob": "Back to file",
+    "pages": "Pages ({{n}})",
+    "noPages": "No pages yet — editor initializes on the first run.",
+    "selectAPage": "Select a page on the left.",
+    "pageNotFound": "Page not found.",
+    "modified": "Modified",
+    "clean": "Clean",
+    "savedDirtyHint": "Saved — not committed",
+    "noDiff": "No changes vs HEAD.",
+    "discard": "Discard",
+    "discardHint": "Throw away every uncommitted change on this page.",
+    "discardFailed": "Discard failed",
+    "saveFailed": "Save failed",
+    "commit": "Commit all",
+    "commitHint": "Commit every modified page.",
+    "commitSuccess": "Edits committed.",
+    "commitNothing": "Nothing to commit.",
+    "commitFailed": "Commit failed",
+    "dirtyCount": "{{n}} modified page(s)",
+    "emptyPlaceholder": "Empty page."
   }
 }

@@ -295,5 +295,29 @@
       "submit": "Mettre à jour",
       "success": "Mot de passe mis à jour"
     }
+  },
+  "editor": {
+    "open": "Éditeur",
+    "openHint": "Ouvrir l'éditeur de pages (modifier, voir le diff, valider).",
+    "backToJob": "Retour au fichier",
+    "pages": "Pages ({{n}})",
+    "noPages": "Aucune page — l'éditeur s'initialise au premier passage.",
+    "selectAPage": "Sélectionnez une page à gauche.",
+    "pageNotFound": "Page introuvable.",
+    "modified": "Modifiée",
+    "clean": "À jour",
+    "savedDirtyHint": "Enregistrée — non commitée",
+    "noDiff": "Aucun changement par rapport à HEAD.",
+    "discard": "Rejeter",
+    "discardHint": "Annule toutes les modifications non commitées sur cette page.",
+    "discardFailed": "Rejet échoué",
+    "saveFailed": "Enregistrement échoué",
+    "commit": "Valider tout",
+    "commitHint": "Valide chaque page modifiée dans un commit.",
+    "commitSuccess": "Modifications validées.",
+    "commitNothing": "Rien à valider.",
+    "commitFailed": "Validation échouée",
+    "dirtyCount": "{{n}} page(s) modifiée(s)",
+    "emptyPlaceholder": "Page vide."
   }
 }
