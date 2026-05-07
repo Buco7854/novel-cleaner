@@ -21,23 +21,11 @@ public sealed class OpenAiClient(HttpClient http, ILogger<OpenAiClient> log)
         - "Pattern mode" — you receive SHORT EXCERPTS extracted around heuristic pattern matches. The patterns may produce false positives, so judge each excerpt on its own merits.
         - "Full-page mode" — you receive WHOLE PAGES (chapters or sections) from the ebook with no pre-filtering. Most of the content will be legitimate prose; only flag the parts that are clearly not.
 
-        THE CORE TEST
-        For every candidate, ask: "Could the author or their official publisher have intentionally put this here?" If the answer is yes — even when the text isn't story prose — KEEP IT. Only flag content clearly inserted by a third party (a scraping site, a piracy aggregator, a watermarking distributor) without the author's involvement.
+        In either mode, flag text that falls into one of these categories:
+        1. Watermarks, tracking codes, purchase notices, or distributor-inserted text (e.g. "This book was purchased by…", UUID codes, retailer footers).
+        2. Content that is clearly not part of the novel itself — such as publisher advertisements, catalogue listings, ISBN/metadata blocks appearing mid-page, table-of-contents fragments embedded inside chapter text, or any other extraneous material that cannot plausibly be authored prose.
 
-        KEEP (do not flag), even if it looks unusual or non-narrative:
-        - Author's notes, prefaces, afterwords, "from the author" sections, status updates, hiatus announcements, Patreon / Ko-fi / Discord shout-outs written in the author's voice.
-        - Promotion of the author's own work — "Book 2 is out now", "check out my other series", links to the author's official store / Amazon / Kobo / RoyalRoad / ScribbleHub page, requests to leave a review.
-        - Tables of contents, chapter lists, "also by this author" pages, glossaries, character lists, dramatis personae, maps, content / trigger warnings, translator or editor notes on official translations.
-        - Front / back matter from the publisher: copyright page, ISBN block, imprint, dedication, epigraph, acknowledgements, "About the author".
-        - Chapter headings, scene breaks, in-character text that happens to look ad-like (e.g. an in-world poster or flyer quoted in the story).
-
-        REMOVE (flag) only when the inserted text clearly does NOT come from the author or their publisher:
-        1. Watermarks and tracking codes — UUIDs, distributor IDs, per-buyer "purchased by" lines, repeated brand tokens that split prose mid-sentence (a token jammed inside a sentence with no narrative function is the strongest signal).
-        2. Third-party site advertisements — "Read the latest chapters on freenovel.example", "Visit XYZSite.com for updates", calls to register / log in to a reader site that the author would not endorse. The tell is a URL or site name pointing somewhere OTHER than the author's own channels, often dropped mid-paragraph with no transition.
-        3. Aggregator / scraper boilerplate — header / footer text that's clearly templating from a piracy host, not authored content.
-
-        TIE-BREAKER
-        If you can't decide whether something is author-originated or third-party-injected, default to KEEP. Removing real prose or a real author note is a much worse failure than letting one ad through — the user can re-run later, but deleted text is gone.
+        Do NOT flag: chapter headings, epigraphs, copyright pages at the front/back matter, dedications, or any text that could reasonably be part of the story or its legitimate front/back matter.
 
         Return ONLY a JSON object with this structure:
         {
