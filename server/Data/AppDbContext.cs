@@ -13,6 +13,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<CleanJob> CleanJobs => Set<CleanJob>();
     public DbSet<JobLogEntry> JobLogs => Set<JobLogEntry>();
     public DbSet<OpdsSource> OpdsSources => Set<OpdsSource>();
+    public DbSet<ChapterReview> ChapterReviews => Set<ChapterReview>();
+    public DbSet<ReviewProposal> ReviewProposals => Set<ReviewProposal>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -55,11 +57,29 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
                 .WithOne(l => l.Job)
                 .HasForeignKey(l => l.JobId)
                 .OnDelete(DeleteBehavior.Cascade);
+            b.HasMany(j => j.Reviews)
+                .WithOne(r => r.Job)
+                .HasForeignKey(r => r.JobId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<JobLogEntry>(b =>
         {
             b.HasIndex(l => new { l.JobId, l.Id });
+        });
+
+        builder.Entity<ChapterReview>(b =>
+        {
+            b.HasIndex(r => r.JobId);
+            b.HasMany(r => r.Proposals)
+                .WithOne(p => p.Chapter)
+                .HasForeignKey(p => p.ChapterReviewId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<ReviewProposal>(b =>
+        {
+            b.HasIndex(p => p.ChapterReviewId);
         });
 
         builder.Entity<OpdsSource>(b =>

@@ -20,5 +20,12 @@ public class UserSettings
     /// <summary>Characters of context to include around each pattern match.</summary>
     public int ContextWindow { get; set; } = 1000;
 
+    /// <summary>
+    /// When true, completed LLM passes pause at <c>AwaitingReview</c> so the
+    /// user can accept/reject/add proposals before the cleaned EPUB is
+    /// written. Default true — destructive edits should be opt-out.
+    /// </summary>
+    public bool ReviewBeforeApplying { get; set; } = true;
+
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 }

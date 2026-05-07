@@ -8,6 +8,9 @@ public enum JobStatus
     Completed,
     Failed,
     Canceled,
+    // Append new values at the end. EF stores enums as int and existing
+    // rows would be misinterpreted if positions shifted.
+    AwaitingReview,
 }
 
 public class CleanJob
@@ -31,11 +34,19 @@ public class CleanJob
     public int RemovedCount { get; set; }
     public string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// Snapshotted from <see cref="UserSettings.ReviewBeforeApplying"/> at job
+    /// creation time. Job-scoped so that flipping the user setting after the
+    /// LLM pass started doesn't reroute an in-flight job.
+    /// </summary>
+    public bool ReviewBeforeApplying { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
 
     public ICollection<JobLogEntry> Logs { get; set; } = [];
+    public ICollection<ChapterReview> Reviews { get; set; } = [];
 }
 
 public class JobLogEntry
