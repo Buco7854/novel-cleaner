@@ -43,6 +43,7 @@ public sealed class JobWorker(
         var openai = sp.GetRequiredService<OpenAiClient>();
         var users = sp.GetRequiredService<UserManager<AppUser>>();
         var auth = sp.GetRequiredService<IOptionsMonitor<AuthOptions>>();
+        var bookRepo = sp.GetRequiredService<BookRepo>();
 
         var job = await db.CleanJobs.Include(j => j.User)
             .FirstOrDefaultAsync(j => j.Id == jobId, ct);
@@ -76,6 +77,22 @@ public sealed class JobWorker(
 
             var docs = EpubHandler.ReadHtmlDocuments(job.InputStoragePath);
             await logger.LogAsync(jobId, "info", $"Found {docs.Count} HTML document(s)", ct);
+
+            // Lazy-init the book repo on the first run so the editor can show
+            // pages + diff history. Pre-existing jobs migrated forward get a
+            // repo on next run; new jobs get one on their first run. The
+            // repo is the source of truth for "current state of pages" once
+            // it exists.
+            if (string.IsNullOrEmpty(job.RepoPath))
+            {
+                var pagesForRepo = docs
+                    .Select(d => (d.Name, EpubHandler.ExtractText(d.Content)))
+                    .ToList();
+                job.RepoPath = bookRepo.InitFromPages(job.Id, pagesForRepo);
+                await db.SaveChangesAsync(ct);
+                await logger.LogAsync(jobId, "info",
+                    $"Initialized editor repo with {pagesForRepo.Count} page(s).", ct);
+            }
 
             var patterns = JsonSerializer.Deserialize<List<string>>(job.PatternsJson) ?? [];
 

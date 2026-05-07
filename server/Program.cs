@@ -303,6 +303,7 @@ app.MapAuthEndpoints();
 app.MapSettingsEndpoints();
 app.MapJobsEndpoints();
 app.MapReviewsEndpoints();
+app.MapPagesEndpoints();
 app.MapUsersEndpoints();
 app.MapOpdsEndpoints();
 app.MapHub<JobHub>("/hubs/jobs");
