@@ -106,7 +106,7 @@ public sealed class JobWorker(
                 job.Status = JobStatus.Completed;
                 job.CompletedAt = DateTimeOffset.UtcNow;
                 await db.SaveChangesAsync(ct);
-                await TryCopyToDropFolderAsync(job, appSettings, unchanged, logger, users, auth.CurrentValue, ct);
+                await DropFolderHelper.TryCopyJobOutputAsync(job, appSettings, unchanged, logger, users, auth.CurrentValue, ct);
                 await logger.UpdateStatusAsync(jobId, JobStatus.Completed, 100, 0, 0, ct);
                 return;
             }
@@ -310,7 +310,7 @@ public sealed class JobWorker(
 
             await logger.LogAsync(jobId, "summary",
                 $"Done — removed {totalRemoved} watermark item(s).", ct);
-            await TryCopyToDropFolderAsync(job, appSettings, outPath, logger, users, auth.CurrentValue, ct);
+            await DropFolderHelper.TryCopyJobOutputAsync(job, appSettings, outPath, logger, users, auth.CurrentValue, ct);
             await logger.UpdateStatusAsync(jobId, JobStatus.Completed, 100, totalCount, totalCount, ct);
         }
         catch (OperationCanceledException)
@@ -358,39 +358,6 @@ public sealed class JobWorker(
         var ext = Path.GetExtension(job.OriginalFileName);
         var stem = Path.GetFileNameWithoutExtension(job.OriginalFileName);
         return Path.Combine(_storage.OutputDirectory, $"{stem}_{job.Id:N}{(ext.Length > 0 ? ext : ".epub")}");
-    }
-
-    private static async Task TryCopyToDropFolderAsync(
-        CleanJob job,
-        AppSettings settings,
-        string sourcePath,
-        JobLogger logger,
-        UserManager<AppUser> users,
-        AuthOptions auth,
-        CancellationToken ct)
-    {
-        if (string.IsNullOrWhiteSpace(settings.DropFolder)) return;
-
-        // Skip the auto-copy if the job's owner doesn't have the BookDrop
-        // permission. We log it (debug-info, not warn) so the operator can
-        // see it was intentional.
-        if (job.User is null
-            || !await Permissions.CanUseDropFolderAsync(users, job.User, auth))
-        {
-            await logger.LogAsync(job.Id, "info",
-                "Drop folder skipped: the job's owner does not have the BookDrop permission.", ct);
-            return;
-        }
-
-        try
-        {
-            var result = DropFolderHelper.Copy(settings.DropFolder, job.OriginalFileName, sourcePath);
-            await logger.LogAsync(job.Id, "info", $"Copied to drop folder: {result.DestinationPath}", ct);
-        }
-        catch (Exception ex)
-        {
-            await logger.LogAsync(job.Id, "warn", $"Drop folder copy failed: {ex.Message}", ct);
-        }
     }
 
     private static string Truncate(string s, int n) => s.Length <= n ? s : s[..n] + "…";
