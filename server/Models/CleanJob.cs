@@ -50,6 +50,15 @@ public class CleanJob
     /// </summary>
     public bool RerunRequested { get; set; }
 
+    /// <summary>
+    /// Path to the per-job git repository that backs the editor. One file
+    /// per page (visible-text projection), initial commit holds the
+    /// untouched extraction. User edits and AI runs land in the working
+    /// tree; accept-hunk = commit; reject-hunk = checkout. Null on jobs
+    /// created before the git-backed editor existed.
+    /// </summary>
+    public string? RepoPath { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }

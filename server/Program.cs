@@ -238,6 +238,7 @@ builder.Services.AddSingleton<JobQueue>();
 builder.Services.AddScoped<UserProvisioningService>();
 builder.Services.AddScoped<JobLogger>();
 builder.Services.AddScoped<JobFinalizer>();
+builder.Services.AddSingleton<BookRepo>();
 builder.Services.AddScoped<OpdsService>();
 builder.Services.AddHttpClient<OpenAiClient>();
 builder.Services.Configure<OpdsOptions>(builder.Configuration.GetSection("Opds"));
