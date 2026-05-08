@@ -33,7 +33,9 @@ public static class SettingsEndpoints
         // field pinned in env will continue to read as the env value
         // even after a save. Frontend marks those fields read-only — we
         // accept the PUT regardless to stay forgiving of stale UIs.
-        group.MapPut("/app", async (HttpContext http, AppDbContext db, AppSettingsResolver resolver, [FromBody] AppSettingsDto dto) =>
+        group.MapPut("/app", async (
+            HttpContext http, AppDbContext db, AppSettingsResolver resolver,
+            LlmConcurrencyGate gate, [FromBody] AppSettingsDto dto) =>
         {
             if (!http.User.IsInRole(AppRoles.Admin)) return Results.Forbid();
             var s = await GetOrCreateAppAsync(db);
@@ -49,6 +51,13 @@ public static class SettingsEndpoints
 
             await db.SaveChangesAsync();
             var resolved = await resolver.ResolveAsync();
+
+            // Live-resize the LLM concurrency gate to the new effective
+            // value. When MaxWorkers is env-pinned, `resolved.MaxWorkers`
+            // is the env value (unchanged by this PUT), so SetMax is a
+            // no-op in that case and the env-locked behaviour is preserved.
+            gate.SetMax(resolved.MaxWorkers);
+
             var userS = await GetOrCreateUserAsync(db, GetUserId(http));
             return Results.Ok(BuildDto(resolved, userS, isAdmin: true));
         });

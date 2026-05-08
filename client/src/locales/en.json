@@ -219,7 +219,7 @@
       "contextWindow": "Context window (chars)",
       "contextWindowHint": "Only applies in Pattern mode — characters of context kept around each match. Ignored in Full-page mode (the whole page is sent).",
       "parallelRequests": "Parallel LLM requests",
-      "parallelRequestsHint": "Global cap on concurrent LLM calls across every running book. Books share the same pool, so two books processing at once compete for the same slots — this is total in-flight, not per-book. Changes apply on next restart.",
+      "parallelRequestsHint": "Global cap on concurrent LLM calls across every running book. Books share the same pool, so two books processing at once compete for the same slots — this is total in-flight, not per-book. Changes apply immediately.",
       "reviewBeforeApplying": "Review before applying",
       "reviewBeforeApplyingLabel": "Pause for review after the LLM pass",
       "reviewBeforeApplyingHint": "When enabled, the cleaned EPUB is not written until you accept or reject each proposed removal. The original file is never touched while reviewing."
