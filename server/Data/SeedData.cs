@@ -9,7 +9,7 @@ public static class SeedData
     public static async Task EnsureRolesAsync(IServiceProvider sp)
     {
         var roles = sp.GetRequiredService<RoleManager<AppRole>>();
-        foreach (var name in new[] { AppRoles.Admin, AppRoles.User, AppRoles.BookDrop })
+        foreach (var name in new[] { AppRoles.Admin, AppRoles.User, AppRoles.DropFolder })
             if (!await roles.RoleExistsAsync(name))
                 await roles.CreateAsync(new AppRole(name));
     }

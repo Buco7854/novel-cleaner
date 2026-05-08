@@ -58,15 +58,15 @@ services:
       Auth__Oidc__EndSessionEndpoint:    ${NOVELCLEANER_OIDC_END_SESSION_ENDPOINT:-}
       # Group → role mapping (optional).
       # Empty AdminGroup → admin role isn't managed by OIDC; manual promotions stick.
-      # Empty DropGroup  → BookDrop role isn't managed by OIDC. Only consulted
-      # when DefaultBookDrop is false.
+      # Empty DropGroup  → DropFolder role isn't managed by OIDC. Only consulted
+      # when DefaultDropFolder is false.
       Auth__Oidc__GroupsClaim:         ${NOVELCLEANER_OIDC_GROUPS_CLAIM:-groups}
       Auth__Oidc__AdminGroups__0:      ${NOVELCLEANER_OIDC_ADMIN_GROUP:-}
       Auth__Oidc__DropFolderGroups__0: ${NOVELCLEANER_OIDC_DROP_GROUP:-}
       Auth__Oidc__AutoProvision:       ${NOVELCLEANER_OIDC_AUTO_PROVISION:-true}
 
       # Default permissions
-      Auth__DefaultBookDrop: ${NOVELCLEANER_DEFAULT_BOOK_DROP:-true}
+      Auth__DefaultDropFolder: ${NOVELCLEANER_DEFAULT_DROP_FOLDER:-true}
     volumes:
       - novelcleaner-data:/data
       - novelcleaner-books:/books

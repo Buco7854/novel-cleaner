@@ -32,8 +32,8 @@ public sealed class UserProvisioningService(
         // Group mapping is OPTIONAL.
         //  - AdminGroups empty       → admin role is not managed by OIDC (manual promotions stick).
         //  - AdminGroups non-empty   → members of any listed group get Admin; non-members lose it.
-        //  - DropFolderGroups empty  → BookDrop role is not managed by OIDC.
-        //  - DropFolderGroups non-empty → members of any listed group get BookDrop; non-members lose it.
+        //  - DropFolderGroups empty  → DropFolder role is not managed by OIDC.
+        //  - DropFolderGroups non-empty → members of any listed group get DropFolder; non-members lose it.
         // Every authenticated OIDC user always gets the User role.
         var groupSet = principal.FindAll(opts.GroupsClaim)
             .Select(c => c.Value)
@@ -99,7 +99,7 @@ public sealed class UserProvisioningService(
         bool isAdmin, bool adminMappingConfigured,
         bool hasDropPermission, bool dropMappingConfigured)
     {
-        foreach (var role in new[] { AppRoles.Admin, AppRoles.User, AppRoles.BookDrop })
+        foreach (var role in new[] { AppRoles.Admin, AppRoles.User, AppRoles.DropFolder })
             if (!await roles.RoleExistsAsync(role))
                 await roles.CreateAsync(new AppRole(role));
 
@@ -115,15 +115,16 @@ public sealed class UserProvisioningService(
                 await users.RemoveFromRoleAsync(user, AppRoles.Admin);
         }
 
-        // BookDrop role: same opt-in semantics as Admin. When DefaultBookDrop
-        // is true, this is irrelevant (everyone has the permission anyway),
-        // but the role membership is still kept in sync for auditability.
+        // DropFolder role: same opt-in semantics as Admin. When
+        // DefaultDropFolder is true, this is irrelevant (everyone has the
+        // permission anyway), but the role membership is still kept in sync
+        // for auditability.
         if (dropMappingConfigured)
         {
-            if (hasDropPermission && !current.Contains(AppRoles.BookDrop))
-                await users.AddToRoleAsync(user, AppRoles.BookDrop);
-            else if (!hasDropPermission && current.Contains(AppRoles.BookDrop))
-                await users.RemoveFromRoleAsync(user, AppRoles.BookDrop);
+            if (hasDropPermission && !current.Contains(AppRoles.DropFolder))
+                await users.AddToRoleAsync(user, AppRoles.DropFolder);
+            else if (!hasDropPermission && current.Contains(AppRoles.DropFolder))
+                await users.RemoveFromRoleAsync(user, AppRoles.DropFolder);
         }
 
         // User role: always granted to anyone who successfully signed in.

@@ -142,7 +142,7 @@ Every authenticated OIDC user automatically gets the **User** role. Two opt-in g
 | --- | --- | --- |
 | `NOVELCLEANER_OIDC_GROUPS_CLAIM` | `Auth__Oidc__GroupsClaim` | Default `groups`. Only consulted when at least one mapping group is configured. |
 | `NOVELCLEANER_OIDC_ADMIN_GROUP` | `Auth__Oidc__AdminGroups__0` | Admin role is **not managed** by OIDC. Manual promotions persist. |
-| `NOVELCLEANER_OIDC_DROP_GROUP` | `Auth__Oidc__DropFolderGroups__0` | `BookDrop` role is **not managed** by OIDC. Combined with `DefaultBookDrop=false`, this means only admins can use the drop folder. |
+| `NOVELCLEANER_OIDC_DROP_GROUP` | `Auth__Oidc__DropFolderGroups__0` | `DropFolder` role is **not managed** by OIDC. Combined with `DefaultDropFolder=false`, this means only admins can use the drop folder. |
 
 To map several IdP groups to a single role, set numbered indices directly: `Auth__Oidc__AdminGroups__0=admins`, `Auth__Oidc__AdminGroups__1=ops`, etc.
 
@@ -150,7 +150,7 @@ To map several IdP groups to a single role, set numbered indices directly: `Auth
 
 | `.env` variable | App env var | Default | Purpose |
 | --- | --- | --- | --- |
-| `NOVELCLEANER_DEFAULT_BOOK_DROP` | `Auth__DefaultBookDrop` | `true` | When `true`, every authenticated user has permission to use the drop folder. When `false`, only admins and users with the `BookDrop` role do (granted via `NOVELCLEANER_OIDC_DROP_GROUP` or directly in the DB). |
+| `NOVELCLEANER_DEFAULT_DROP_FOLDER` | `Auth__DefaultDropFolder` | `true` | When `true`, every authenticated user has permission to use the drop folder. When `false`, only admins and users with the `DropFolder` role do (granted via `NOVELCLEANER_OIDC_DROP_GROUP` or directly in the DB). |
 
 The drop folder permission is checked **at the time the cleanup runs**:
 - If the novel's owner has it → the cleaned EPUB is auto-copied at the end AND the `Copy to drop folder` button is shown on the editor page.
@@ -169,7 +169,7 @@ The Settings page is split into two sections with very different semantics:
 | LLM API key, base URL, model | Any OpenAI-compatible chat completions endpoint |
 | Parallel requests | LLM calls in flight concurrently per job (1–10). Caps cost / rate-limit usage. |
 | System prompt — additional instructions | Appended to the locked output-format prompt |
-| **Drop folder** | Optional absolute server path. When set AND the novel's owner has the BookDrop permission, every cleaned EPUB is auto-copied as `{name}_cleaned.epub`. Existing files are never overwritten — duplicates get ` (1)`, ` (2)`, … suffixes. Failures are logged as warnings without failing the cleanup. |
+| **Drop folder** | Optional absolute server path. When set AND the novel's owner has the DropFolder permission, every cleaned EPUB is auto-copied as `{name}_cleaned.epub`. Existing files are never overwritten — duplicates get ` (1)`, ` (2)`, … suffixes. Failures are logged as warnings without failing the cleanup. |
 
 **Personal (per-user)** — every user manages their own:
 
@@ -177,7 +177,7 @@ The Settings page is split into two sections with very different semantics:
 | --- | --- |
 | System prompt addition | Personal instructions appended after the admin's prompt at every LLM call (e.g. "preserve em-dashes", "this book is in French") |
 
-The Drop folder also has a **manual re-trigger** button on the editor page that copies the cleaned output again using the *current* drop folder setting, so you can re-route after the fact. The button is only shown when the novel's owner has the BookDrop permission.
+The Drop folder also has a **manual re-trigger** button on the editor page that copies the cleaned output again using the *current* drop folder setting, so you can re-route after the fact. The button is only shown when the novel's owner has the DropFolder permission.
 
 See `.env.example` for the full template and `docker-compose.yml` for the wiring.
 
@@ -245,4 +245,3 @@ Both accept either bare IPs or CIDRs. To trust **any** proxy (single-tenant, ful
 - OPDS source passwords are protected with ASP.NET Core Data Protection (key ring stored in the data directory)
 - Outbound OPDS requests refuse to follow redirects and (by default) refuse private/loopback addresses to prevent SSRF and DNS rebinding. Toggle via `Opds__AllowPrivateNetworks` for self-hosted setups.
 - Cookies are HttpOnly, SameSite=Lax, sliding expiry 14 days
-- The schema is upgraded additively at startup (`SchemaMigrator`) — no destructive migrations on existing databases

@@ -276,11 +276,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     Directory.CreateDirectory(storage.DataDirectory);
-    if ((await db.Database.GetPendingMigrationsAsync()).Any())
-        await db.Database.MigrateAsync();
-    else
-        await db.Database.EnsureCreatedAsync();
-    await SchemaMigrator.ApplyAsync(db, scope.ServiceProvider.GetRequiredService<ILogger<AppDbContext>>());
+    await db.Database.EnsureCreatedAsync();
     await SeedData.EnsureRolesAsync(scope.ServiceProvider);
     if (auth.Password.Enabled
         && !string.IsNullOrWhiteSpace(auth.FirstAdminEmail)

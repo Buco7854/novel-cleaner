@@ -84,7 +84,7 @@ public static class NovelsEndpoints
             // dropConfigured is what the editor's "Push to folder" button now
             // gates on: as soon as an admin sets a drop folder, the button
             // shows. The actual permission check still runs server-side at
-            // POST /drop time and returns 403 if the user lacks BookDrop —
+            // POST /drop time and returns 403 if the user lacks DropFolder —
             // that error surfaces as a toast, which is a clearer UX than
             // silently hiding the button.
 

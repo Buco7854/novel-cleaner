@@ -25,10 +25,6 @@ public static class AppRoles
 {
     public const string Admin    = "Admin";
     public const string User     = "User";
-    /// <summary>
-    /// Permission to use the configured drop folder for cleaned novels. The
-    /// constant value is kept as <c>BookDrop</c> for backwards compatibility
-    /// with existing role rows and the documented OIDC group-mapping env var.
-    /// </summary>
-    public const string BookDrop = "BookDrop";
+    /// <summary>Permission to use the configured drop folder for cleaned novels.</summary>
+    public const string DropFolder = "DropFolder";
 }

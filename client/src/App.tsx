@@ -1,5 +1,5 @@
 import { Loader2 } from "lucide-react";
-import { Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { useAuth } from "./contexts/AuthContext";
@@ -40,13 +40,8 @@ export default function App() {
         <Route path="/novels" element={<NovelsPage />} />
         {/* Opening a novel in the library lands directly in the editor —
             it folds in the old detail surface (status, logs, action
-            buttons). The legacy /editor sub-route is preserved as a redirect
-            for bookmarks that pre-date this consolidation, plus /jobs is
-            kept as a one-way redirect so old links still resolve. */}
+            buttons). */}
         <Route path="/novels/:id" element={<EditorPage />} />
-        <Route path="/novels/:id/editor" element={<RedirectToNovel />} />
-        <Route path="/jobs" element={<Navigate to="/novels" replace />} />
-        <Route path="/jobs/:id" element={<RedirectJobsToNovels />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/sources" element={<SourcesPage />} />
         <Route path="/sources/:id/browse" element={<BrowsePage />} />
@@ -56,14 +51,4 @@ export default function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
-}
-
-function RedirectToNovel() {
-  const { id = "" } = useParams();
-  return <Navigate to={`/novels/${id}`} replace />;
-}
-
-function RedirectJobsToNovels() {
-  const { id = "" } = useParams();
-  return <Navigate to={`/novels/${id}`} replace />;
 }
