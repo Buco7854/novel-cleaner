@@ -290,8 +290,7 @@ await using (var scope = app.Services.CreateAsyncScope())
     Directory.CreateDirectory(storage.DataDirectory);
     await db.Database.EnsureCreatedAsync();
     await SeedData.EnsureRolesAsync(scope.ServiceProvider);
-    if (auth.Password.Enabled
-        && !string.IsNullOrWhiteSpace(auth.FirstAdminEmail)
+    if (!string.IsNullOrWhiteSpace(auth.FirstAdminEmail)
         && !string.IsNullOrWhiteSpace(auth.FirstAdminPassword))
     {
         await SeedData.EnsureFirstAdminAsync(scope.ServiceProvider, auth);
