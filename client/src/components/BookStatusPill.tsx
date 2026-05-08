@@ -1,9 +1,9 @@
 import { CheckCircle2, CircleDashed, Eye, Loader2, Pause, Slash, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { NovelStatus } from "../api/novels";
+import { BookStatus } from "../api/books";
 import { clsx } from "../utils/clsx";
 
-export function NovelStatusPill({ status }: { status: NovelStatus }) {
+export function BookStatusPill({ status }: { status: BookStatus }) {
   const { t } = useTranslation();
   const map = {
     Queued:          { cls: "bg-stone-100 text-stone-700 ring-stone-300 dark:bg-stone-700 dark:text-stone-300 dark:ring-stone-600" },

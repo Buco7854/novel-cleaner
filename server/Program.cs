@@ -1,11 +1,11 @@
 using System.Net;
 using System.Security.Claims;
-using NovelCleaner.Server.Configuration;
-using NovelCleaner.Server.Data;
-using NovelCleaner.Server.Endpoints;
-using NovelCleaner.Server.Hubs;
-using NovelCleaner.Server.Models;
-using NovelCleaner.Server.Services;
+using Tergeo.Server.Configuration;
+using Tergeo.Server.Data;
+using Tergeo.Server.Endpoints;
+using Tergeo.Server.Hubs;
+using Tergeo.Server.Models;
+using Tergeo.Server.Services;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
@@ -24,6 +24,7 @@ builder.Host.UseSerilog((ctx, lc) => lc
 // ----- Options ----------------------------------------------------------
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
 builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
+builder.Services.Configure<AppSettingsOverrides>(builder.Configuration.GetSection("App"));
 
 // ForwardedHeadersOptions still uses Microsoft.AspNetCore.HttpOverrides.IPNetwork
 // even though the type is marked obsolete. Silence the deprecation noise.
@@ -118,7 +119,7 @@ builder.Services.PostConfigure<AuthOptions>(o => { o.Password.Enabled = auth.Pas
 // ----- Database (SQLite only, lives in StorageOptions.DataDirectory) -----
 Directory.CreateDirectory(storage.DataDirectory);
 var connectionString = builder.Configuration.GetConnectionString("Default")
-    ?? $"Data Source={Path.Combine(storage.DataDirectory, "novelcleaner.db")}";
+    ?? $"Data Source={Path.Combine(storage.DataDirectory, "tergeo.db")}";
 
 builder.Services.AddDbContext<AppDbContext>(o => o.UseSqlite(connectionString));
 
@@ -146,7 +147,7 @@ var authBuilder = builder.Services
     })
     .AddCookie(IdentityConstants.ApplicationScheme, o =>
     {
-        o.Cookie.Name = "novelcleaner.auth";
+        o.Cookie.Name = "tergeo.auth";
         o.Cookie.HttpOnly = true;
         o.Cookie.SameSite = SameSiteMode.Lax;
         o.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
@@ -234,12 +235,13 @@ if (auth.Oidc.Enabled)
 builder.Services.AddAuthorization();
 
 // ----- App services -----------------------------------------------------
-builder.Services.AddSingleton<JobQueue>();
-builder.Services.AddSingleton<JobCancellationRegistry>();
+builder.Services.AddSingleton<BookProcessingQueue>();
+builder.Services.AddSingleton<BookCancellationRegistry>();
 builder.Services.AddScoped<UserProvisioningService>();
-builder.Services.AddScoped<JobLogger>();
-builder.Services.AddScoped<JobFinalizer>();
-builder.Services.AddSingleton<BookRepo>();
+builder.Services.AddScoped<AppSettingsResolver>();
+builder.Services.AddScoped<BookEventLogger>();
+builder.Services.AddScoped<BookFinalizer>();
+builder.Services.AddSingleton<BookEditorRepo>();
 builder.Services.AddScoped<BookImporter>();
 builder.Services.AddScoped<OpdsService>();
 builder.Services.AddHttpClient<OpenAiClient>();
@@ -252,7 +254,7 @@ builder.Services.AddHttpClient("opds")
             opdsOptions.AllowPrivateNetworks));
 Directory.CreateDirectory(storage.KeysDirectory);
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(storage.KeysDirectory));
-builder.Services.AddHostedService<JobWorker>();
+builder.Services.AddHostedService<BookProcessor>();
 
 builder.Services.AddSignalR();
 // No CORS by default — the SPA is served from the same origin as the API
@@ -276,11 +278,7 @@ await using (var scope = app.Services.CreateAsyncScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     Directory.CreateDirectory(storage.DataDirectory);
-    if ((await db.Database.GetPendingMigrationsAsync()).Any())
-        await db.Database.MigrateAsync();
-    else
-        await db.Database.EnsureCreatedAsync();
-    await SchemaMigrator.ApplyAsync(db, scope.ServiceProvider.GetRequiredService<ILogger<AppDbContext>>());
+    await db.Database.EnsureCreatedAsync();
     await SeedData.EnsureRolesAsync(scope.ServiceProvider);
     if (auth.Password.Enabled
         && !string.IsNullOrWhiteSpace(auth.FirstAdminEmail)
@@ -330,12 +328,13 @@ app.Use(async (ctx, next) =>
 app.MapSetupEndpoints();
 app.MapAuthEndpoints();
 app.MapSettingsEndpoints();
-app.MapJobsEndpoints();
-app.MapReviewsEndpoints();
+app.MapBooksEndpoints();
+app.MapBookActionsEndpoints();
 app.MapPagesEndpoints();
 app.MapUsersEndpoints();
+app.MapAdminUsageEndpoints();
 app.MapOpdsEndpoints();
-app.MapHub<JobHub>("/hubs/novels");
+app.MapHub<BookHub>("/hubs/books");
 
 // SPA fallback — anything that didn't match an endpoint serves index.html
 app.MapFallbackToFile("/index.html");

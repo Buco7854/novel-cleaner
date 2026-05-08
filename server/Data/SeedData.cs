@@ -1,15 +1,15 @@
-using NovelCleaner.Server.Configuration;
-using NovelCleaner.Server.Models;
+using Tergeo.Server.Configuration;
+using Tergeo.Server.Models;
 using Microsoft.AspNetCore.Identity;
 
-namespace NovelCleaner.Server.Data;
+namespace Tergeo.Server.Data;
 
 public static class SeedData
 {
     public static async Task EnsureRolesAsync(IServiceProvider sp)
     {
         var roles = sp.GetRequiredService<RoleManager<AppRole>>();
-        foreach (var name in new[] { AppRoles.Admin, AppRoles.User, AppRoles.BookDrop })
+        foreach (var name in new[] { AppRoles.Admin, AppRoles.User, AppRoles.DropFolder })
             if (!await roles.RoleExistsAsync(name))
                 await roles.CreateAsync(new AppRole(name));
     }

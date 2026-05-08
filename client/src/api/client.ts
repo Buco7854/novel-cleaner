@@ -20,7 +20,7 @@ export async function api<T = unknown>(
       // Sent on every request so the server can reject any cross-origin
       // form post that lacks it (browsers turn requests with this header
       // into preflighted ones, blocking same-site CSRF too).
-      "X-Requested-With": "novel-cleaner",
+      "X-Requested-With": "tergeo",
       ...(init.headers ?? {}),
     },
   });

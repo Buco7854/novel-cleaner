@@ -1,13 +1,13 @@
-using NovelCleaner.Server.Configuration;
-using NovelCleaner.Server.Models;
-using NovelCleaner.Server.Services;
+using Tergeo.Server.Configuration;
+using Tergeo.Server.Models;
+using Tergeo.Server.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
-namespace NovelCleaner.Server.Endpoints;
+namespace Tergeo.Server.Endpoints;
 
 public static class AuthEndpoints
 {

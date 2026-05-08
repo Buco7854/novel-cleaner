@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowLeft, ArrowRight, ArrowUpFromLine, BookText, ChevronRight, ChevronsLeft, ChevronsRight, Folder, Library, Loader2, Plus, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUpFromLine, BookText, ChevronRight, ChevronsLeft, ChevronsRight, Folder, Library, Loader2, Plus, Search, Sparkles, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -42,11 +42,11 @@ export function BrowsePage() {
   const importBook = useMutation({
     mutationFn: ({ href, title, mode }: { href: string; title: string; mode: OpdsImportMode }) =>
       importEntry(id, href, title, mode),
-    onSuccess: ({ novelId }, vars) => {
+    onSuccess: ({ bookId }, vars) => {
       toast.success(vars.mode === "AddAndRunAi"
         ? t("browse.addedAndQueued")
         : t("browse.added"));
-      nav(`/novels/${novelId}`);
+      nav(`/books/${bookId}`);
     },
     onError: (e) => toast.error(t("browse.addFailed"), e instanceof Error ? e.message : ""),
   });
@@ -55,6 +55,19 @@ export function BrowsePage() {
     setStack((s) => [...s, { url: c.href, title: c.title }]);
   }
   function pop() { setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)); }
+
+  // Local search-input state. Submission substitutes the OpenSearch
+  // `{searchTerms}` placeholder and pushes the resulting URL onto the
+  // browse stack — same navigation path as opening a category, so back
+  // pops out of the search results into the feed the user came from.
+  const [searchInput, setSearchInput] = useState("");
+  const searchTemplate = feed.data?.searchTemplate ?? null;
+  function runSearch() {
+    const term = searchInput.trim();
+    if (!term || !searchTemplate) return;
+    const url = searchTemplate.replace(/\{searchTerms\}/g, encodeURIComponent(term));
+    setStack((s) => [...s, { url, title: t("browse.searchResultsTitle", { q: term }) }]);
+  }
 
   // Many OPDS catalogs omit the title attribute on next/previous links — we
   // can't drop those silently or pagination disappears. Fall back to an i18n
@@ -109,6 +122,38 @@ export function BrowsePage() {
         <h1 className="min-w-0 break-words text-base font-semibold leading-tight tracking-tight sm:flex-1 sm:truncate sm:text-2xl">
           {feed.data?.title ?? current?.title ?? t("browse.title")}
         </h1>
+        {searchTemplate && (
+          <form
+            onSubmit={(e) => { e.preventDefault(); runSearch(); }}
+            className="flex w-full shrink-0 items-center gap-2 sm:w-auto"
+          >
+            <div className="relative flex-1 sm:w-64">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400" />
+              <input
+                type="search"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={t("browse.searchPlaceholder") ?? ""}
+                className="w-full rounded-md border border-stone-200 bg-white py-1.5 pl-8 pr-7 text-sm text-stone-800 placeholder-stone-400 focus:border-stone-400 focus:outline-none focus:ring-1 focus:ring-stone-400 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100 dark:placeholder-stone-500"
+                aria-label={t("browse.searchLabel") ?? ""}
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200"
+                  aria-label={t("browse.searchClear") ?? ""}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            <button type="submit" className="btn-secondary shrink-0" disabled={!searchInput.trim()}>
+              <Search className="h-4 w-4" />
+              <span className="hidden sm:inline">{t("browse.search")}</span>
+            </button>
+          </form>
+        )}
       </div>
 
       {feed.isLoading && (
@@ -242,6 +287,13 @@ function BookCard({ sourceId, book, aiEnabled, busyMode, onImport }: BookCardPro
           <div className="truncate text-xs text-stone-500 dark:text-stone-400">
             {book.author ?? t("browse.unknownAuthor")}
           </div>
+          {book.series && (
+            <div className="mt-0.5 truncate text-xs italic text-stone-500 dark:text-stone-400">
+              {book.seriesIndex
+                ? t("browse.seriesEntry", { series: book.series, index: book.seriesIndex })
+                : book.series}
+            </div>
+          )}
           {(book.languages.length > 0 || book.publisher || book.issued) && (
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] uppercase tracking-wide text-stone-400 dark:text-stone-500">
               {book.languages.map((l) => <span key={l}>{l}</span>)}

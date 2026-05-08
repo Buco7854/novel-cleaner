@@ -1,47 +1,51 @@
-using NovelCleaner.Server.Configuration;
-using NovelCleaner.Server.Models;
+using Tergeo.Server.Configuration;
+using Tergeo.Server.Models;
 using Microsoft.AspNetCore.Identity;
 
-namespace NovelCleaner.Server.Services;
+namespace Tergeo.Server.Services;
 
 public sealed record DropResult(string DestinationPath);
 
+/// <summary>
+/// Copies cleaned EPUB output into the admin-configured drop folder. Both
+/// the auto path (worker post-clean, finalize-after-review) and the manual
+/// re-trigger button on the editor route through here so the on-disk
+/// behavior and log lines stay identical.
+/// </summary>
 public static class DropFolderHelper
 {
     /// <summary>
-    /// Copies a finished job's output into the configured drop folder, after
-    /// confirming a folder is configured AND the job's owner holds the
-    /// BookDrop permission. Used by both the worker (post-clean) and the
-    /// finalize endpoint (post-review) so they emit identical log lines and
-    /// honor the same gate.
+    /// Copies a finished book's output into the configured drop folder,
+    /// after confirming a folder is configured AND the book's owner holds
+    /// the drop-folder permission.
     /// </summary>
-    public static async Task TryCopyJobOutputAsync(
-        CleanJob job,
-        AppSettings settings,
+    public static async Task TryCopyOutputAsync(
+        Book book,
+        string? dropFolder,
         string sourcePath,
-        JobLogger logger,
+        BookEventLogger logger,
         UserManager<AppUser> users,
         AuthOptions auth,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(settings.DropFolder)) return;
+        if (string.IsNullOrWhiteSpace(dropFolder)) return;
 
-        if (job.User is null
-            || !await Permissions.CanUseDropFolderAsync(users, job.User, auth))
+        if (book.User is null
+            || !await Permissions.CanUseDropFolderAsync(users, book.User, auth))
         {
-            await logger.LogAsync(job.Id, "info",
-                "Drop folder skipped: the job's owner does not have the BookDrop permission.", ct);
+            await logger.LogAsync(book.Id, "info",
+                "Drop folder skipped: the book's owner does not have the drop-folder permission.", ct);
             return;
         }
 
         try
         {
-            var result = Copy(settings.DropFolder, job.OriginalFileName, sourcePath);
-            await logger.LogAsync(job.Id, "info", $"Copied to drop folder: {result.DestinationPath}", ct);
+            var result = Copy(dropFolder, book.OriginalFileName, sourcePath);
+            await logger.LogAsync(book.Id, "info", $"Copied to drop folder: {result.DestinationPath}", ct);
         }
         catch (Exception ex)
         {
-            await logger.LogAsync(job.Id, "warn", $"Drop folder copy failed: {ex.Message}", ct);
+            await logger.LogAsync(book.Id, "warn", $"Drop folder copy failed: {ex.Message}", ct);
         }
     }
 

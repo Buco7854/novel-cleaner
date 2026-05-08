@@ -16,14 +16,14 @@ import {
   restorePageToCommit, writePage,
 } from "../api/pages";
 import {
-  cancelNovel, clearNovelLogs, downloadUrl, getNovel, NovelMetadata,
-  novelDisplayName, NovelStatus, pauseNovel, pushToFolder, resumeNovel,
-  saveNovelMetadata, saveNovelPrompt,
-} from "../api/novels";
-import { createNovelHub, NovelLogEvent } from "../api/novelsHub";
+  cancelBook, clearBookLogs, downloadUrl, getBook, BookMetadata,
+  bookDisplayName, BookStatus, pauseBook, pushToFolder, resumeBook,
+  saveBookMetadata, saveBookPrompt,
+} from "../api/books";
+import { createBookHub, BookLogEvent } from "../api/booksHub";
 import { runAi } from "../api/reviews";
 import { fetchSettings } from "../api/settings";
-import { NovelStatusPill } from "../components/NovelStatusPill";
+import { BookStatusPill } from "../components/BookStatusPill";
 import { useConfirm } from "../contexts/ConfirmContext";
 import { useTheme } from "../contexts/ThemeContext";
 import { useToast } from "../contexts/ToastContext";
@@ -64,8 +64,8 @@ export function EditorPage() {
   const qc = useQueryClient();
 
   const job = useQuery({
-    queryKey: ["novel", id],
-    queryFn: () => getNovel(id),
+    queryKey: ["book", id],
+    queryFn: () => getBook(id),
     enabled: !!id,
     refetchInterval: 4000,
   });
@@ -137,6 +137,11 @@ export function EditorPage() {
   // here the user would land back on Diff every time they pick a new
   // chapter from the file tree.
   const [editorTab, setEditorTab] = useState<"diff" | "preview">("diff");
+  // Mobile-only: the edit textarea and view pane don't fit comfortably
+  // stacked in a phone viewport, so on small screens we show one at a time.
+  // Lifted here for the same reason as editorTab — survives chapter switches
+  // (PageView unmounts during the loading state).
+  const [mobilePane, setMobilePane] = useState<"edit" | "view">("edit");
 
   const save = useMutation({
     mutationFn: (content: string) => writePage(id, selected!, content),
@@ -239,34 +244,34 @@ export function EditorPage() {
   // ---- Job lifecycle actions ------------------------------------------
   const drop = useMutation({
     mutationFn: () => pushToFolder(id),
-    onSuccess: (r) => toast.success(t("novelDetail.dropSuccess"), r.destination),
-    onError: (e) => toast.error(t("novelDetail.dropFailed"), e instanceof Error ? e.message : ""),
+    onSuccess: (r) => toast.success(t("bookDetail.dropSuccess"), r.destination),
+    onError: (e) => toast.error(t("bookDetail.dropFailed"), e instanceof Error ? e.message : ""),
   });
 
   const pause = useMutation({
-    mutationFn: () => pauseNovel(id),
-    onSuccess: () => { setStatus("Paused"); qc.invalidateQueries({ queryKey: ["novels"] }); },
-    onError: (e) => toast.error(t("novelDetail.pauseFailed"), e instanceof Error ? e.message : ""),
+    mutationFn: () => pauseBook(id),
+    onSuccess: () => { setStatus("Paused"); qc.invalidateQueries({ queryKey: ["books"] }); },
+    onError: (e) => toast.error(t("bookDetail.pauseFailed"), e instanceof Error ? e.message : ""),
   });
 
   const resume = useMutation({
-    mutationFn: () => resumeNovel(id),
-    onSuccess: () => { setStatus("Running"); qc.invalidateQueries({ queryKey: ["novels"] }); },
-    onError: (e) => toast.error(t("novelDetail.resumeFailed"), e instanceof Error ? e.message : ""),
+    mutationFn: () => resumeBook(id),
+    onSuccess: () => { setStatus("Running"); qc.invalidateQueries({ queryKey: ["books"] }); },
+    onError: (e) => toast.error(t("bookDetail.resumeFailed"), e instanceof Error ? e.message : ""),
   });
 
   const cancel = useMutation({
-    mutationFn: () => cancelNovel(id),
+    mutationFn: () => cancelBook(id),
     // Status flips to whatever the derived display rules return on next
     // fetch (Idle if clean, AwaitingReview if proposals were already
     // written to the working tree). Don't optimistically setStatus here —
     // letting the refetch land avoids a flash of "Canceled" before the
     // derived value arrives.
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["novel", id] });
-      qc.invalidateQueries({ queryKey: ["novels"] });
+      qc.invalidateQueries({ queryKey: ["book", id] });
+      qc.invalidateQueries({ queryKey: ["books"] });
     },
-    onError: (e) => toast.error(t("novelDetail.cancelFailed"), e instanceof Error ? e.message : ""),
+    onError: (e) => toast.error(t("bookDetail.cancelFailed"), e instanceof Error ? e.message : ""),
   });
 
   // Clearing logs hits the server so a refresh doesn't repopulate them.
@@ -274,10 +279,10 @@ export function EditorPage() {
   // toast instead of being silently swallowed — and so the cached job
   // query is invalidated, which re-fetches the (now empty) log list.
   const clearLogs = useMutation({
-    mutationFn: () => clearNovelLogs(id),
+    mutationFn: () => clearBookLogs(id),
     onSuccess: () => {
       setLogs([]);
-      qc.invalidateQueries({ queryKey: ["novel", id] });
+      qc.invalidateQueries({ queryKey: ["book", id] });
     },
     onError: (e) => toast.error("Could not clear logs", e instanceof Error ? e.message : ""),
   });
@@ -288,8 +293,8 @@ export function EditorPage() {
       toast.success(t("editor.runAiQueued"));
       setStatus("Queued");
       setLogsOpen(true);
-      qc.invalidateQueries({ queryKey: ["novel", id] });
-      qc.invalidateQueries({ queryKey: ["novels"] });
+      qc.invalidateQueries({ queryKey: ["book", id] });
+      qc.invalidateQueries({ queryKey: ["books"] });
     },
     onError: (e) => toast.error(t("editor.runAiFailed"), e instanceof Error ? e.message : ""),
   });
@@ -302,14 +307,14 @@ export function EditorPage() {
       // fresh content + diff + page list.
       qc.invalidateQueries({ queryKey: ["pages", id] });
       qc.invalidateQueries({ queryKey: ["page", id] });
-      qc.invalidateQueries({ queryKey: ["novel", id] });
+      qc.invalidateQueries({ queryKey: ["book", id] });
     },
     onError: (e) => toast.error(t("editor.resetFailed"), e instanceof Error ? e.message : ""),
   });
 
   // ---- Live status / log feed (SignalR) -------------------------------
   const [logs, setLogs] = useState<LogLine[]>([]);
-  const [status, setStatus] = useState<NovelStatus | null>(null);
+  const [status, setStatus] = useState<BookStatus | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [done, setDone] = useState<number | null>(null);
   const [total, setTotal] = useState<number | null>(null);
@@ -336,19 +341,19 @@ export function EditorPage() {
 
   useEffect(() => {
     if (!id) return;
-    const hub = createNovelHub();
+    const hub = createBookHub();
     let mounted = true;
 
-    const offLog = hub.onLog((e: NovelLogEvent) => {
-      if (e.novelId !== id) return;
+    const offLog = hub.onLog((e: BookLogEvent) => {
+      if (e.bookId !== id) return;
       setLogs((cur) => [...cur, {
         ts: e.timestamp, level: e.level, message: e.message,
         detail: e.detail ?? null, groupId: e.groupId ?? null,
       }]);
     });
     const offStatus = hub.onStatus((e) => {
-      if (e.novelId !== id) return;
-      const next = e.status as NovelStatus;
+      if (e.bookId !== id) return;
+      const next = e.status as BookStatus;
       if (typeof e.progress === "number") setProgress(e.progress);
       if (typeof e.done === "number") setDone(e.done);
       if (typeof e.total === "number") setTotal(e.total);
@@ -357,8 +362,8 @@ export function EditorPage() {
       // so for terminal states we skip the optimistic setStatus and let
       // the invalidate-then-refetch pull in Idle/AwaitingReview directly.
       if (next === "Completed" || next === "Failed" || next === "Canceled") {
-        qc.invalidateQueries({ queryKey: ["novel", id] });
-        qc.invalidateQueries({ queryKey: ["novels"] });
+        qc.invalidateQueries({ queryKey: ["book", id] });
+        qc.invalidateQueries({ queryKey: ["books"] });
         qc.invalidateQueries({ queryKey: ["pages", id] });
         // Per-path page query is keyed `["page", id, path]` — prefix
         // invalidation refetches every open page so AI edits show up
@@ -375,8 +380,8 @@ export function EditorPage() {
         if (hub.conn.state === HubConnectionState.Disconnected) await hub.start();
         await hub.subscribe(id);
       } catch { /* visibility handler will retry */ }
-      qc.invalidateQueries({ queryKey: ["novel", id] });
-      qc.invalidateQueries({ queryKey: ["novels"] });
+      qc.invalidateQueries({ queryKey: ["book", id] });
+      qc.invalidateQueries({ queryKey: ["books"] });
     }
 
     hub.conn.onreconnected(() => { void ensureLiveAndRefresh(); });
@@ -438,7 +443,7 @@ export function EditorPage() {
   // button in the page header.
   const [historyOpen, setHistoryOpen] = useState(false);
 
-  // ---- Per-novel AI prompt editor --------------------------------------
+  // ---- Per-book AI prompt editor --------------------------------------
   const [promptOpen, setPromptOpen] = useState(false);
   const [metadataOpen, setMetadataOpen] = useState(false);
 
@@ -497,6 +502,21 @@ export function EditorPage() {
     }
     return out;
   }, [logs, docToPage]);
+  // ---- Low-confidence flagging ----------------------------------------
+  // Pages whose last AI pass landed at least one item the LLM marked
+  // `watermark: false` (level="suspicious"). Drives the cyan dot in the
+  // file tree so the user knows which pages need a closer look.
+  const suspiciousByPage = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const l of logs) {
+      if (l.level !== "suspicious" || !l.groupId) continue;
+      const path = docToPage.get(l.groupId);
+      if (!path) continue;
+      const m = /(\d+)\s+suspicious/.exec(l.message);
+      out.set(path, m ? parseInt(m[1], 10) : 0);
+    }
+    return out;
+  }, [logs, docToPage]);
   const isInflight = status === "Running" || status === "Queued" || status === "Paused";
   const showProgress = (status === "Running" || status === "Paused") && total !== null && total > 0;
 
@@ -519,6 +539,7 @@ export function EditorPage() {
       onPickNone={pickNone}
       loading={pages.isLoading}
       partialByPage={partialByPage}
+      suspiciousByPage={suspiciousByPage}
       aiEnabled={aiEnabled}
       onRunAi={() => runAiMut.mutate(Array.from(picked))}
       runAiPending={runAiMut.isPending}
@@ -547,13 +568,13 @@ export function EditorPage() {
     <div className="flex h-[calc(100dvh-8rem)] flex-col gap-3 sm:h-[calc(100dvh-9rem)] sm:gap-4">
       {/* ── Header bar — three logical groups (back/drawer, title+status,
             actions). On mobile the title gets its own row so a long
-            filename never gets shrunk to "novel-w…" by sibling buttons.
+            filename never gets shrunk to "book-w…" by sibling buttons.
             Desktop folds everything onto a single line. ──────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2.5">
         {/* Row 1 (mobile only): back + drawer toggle. Folds inline at sm+. */}
         <div className="flex shrink-0 items-center gap-2.5">
           <Link
-            to="/novels"
+            to="/books"
             className="btn-ghost shrink-0 px-2 py-1.5 sm:px-3 sm:py-2"
             aria-label={t("editor.backToLibrary")}
           >
@@ -574,7 +595,7 @@ export function EditorPage() {
           {/* Status pill stays grouped with the back/drawer cluster on
               mobile so the title is the only thing on its row. On
               desktop it ends up next to the title naturally. */}
-          {status && <span className="shrink-0 sm:hidden"><NovelStatusPill status={status} /></span>}
+          {status && <span className="shrink-0 sm:hidden"><BookStatusPill status={status} /></span>}
         </div>
 
         {/* Title — its own row on mobile (full width, may wrap). On
@@ -586,12 +607,12 @@ export function EditorPage() {
           className="min-w-0 break-words text-base font-semibold leading-tight tracking-tight sm:flex-1 sm:truncate sm:text-lg"
           title={job.data.fileName}
         >
-          {novelDisplayName(job.data)}
+          {bookDisplayName(job.data)}
         </h1>
 
         {/* Status pill (desktop placement). Hidden on mobile — already
             shown next to the back arrow in row 1. */}
-        {status && <span className="hidden sm:inline-flex"><NovelStatusPill status={status} /></span>}
+        {status && <span className="hidden sm:inline-flex"><BookStatusPill status={status} /></span>}
 
         {/* Actions row — wraps on mobile so the ring/shadow on each button
             isn't clipped by an `overflow-x-auto` scroll container (the
@@ -600,13 +621,13 @@ export function EditorPage() {
         <div className="flex shrink-0 flex-wrap items-center gap-2.5 sm:ml-auto sm:flex-nowrap">
           {status === "Running" && (
             <button className="btn-ghost shrink-0 px-2 py-1.5" onClick={() => pause.mutate()}
-                    disabled={pause.isPending} title={t("novelDetail.pause")}>
+                    disabled={pause.isPending} title={t("bookDetail.pause")}>
               {pause.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pause className="h-4 w-4" />}
             </button>
           )}
           {status === "Paused" && (
             <button className="btn-ghost shrink-0 px-2 py-1.5" onClick={() => resume.mutate()}
-                    disabled={resume.isPending} title={t("novelDetail.resume")}>
+                    disabled={resume.isPending} title={t("bookDetail.resume")}>
               {resume.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
             </button>
           )}
@@ -619,16 +640,16 @@ export function EditorPage() {
               className="btn-ghost shrink-0 px-2 py-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10"
               onClick={async () => {
                 const ok = await confirm({
-                  title: t("novelDetail.cancelTitle"),
-                  body: t("novelDetail.cancelConfirm"),
-                  confirmLabel: t("novelDetail.cancelConfirmBtn"),
-                  cancelLabel: t("novelDetail.cancelCancelBtn"),
+                  title: t("bookDetail.cancelTitle"),
+                  body: t("bookDetail.cancelConfirm"),
+                  confirmLabel: t("bookDetail.cancelConfirmBtn"),
+                  cancelLabel: t("bookDetail.cancelCancelBtn"),
                   danger: true,
                 });
                 if (ok) cancel.mutate();
               }}
               disabled={cancel.isPending}
-              title={t("novelDetail.cancel")}
+              title={t("bookDetail.cancel")}
             >
               {cancel.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Square className="h-4 w-4" />}
             </button>
@@ -643,10 +664,10 @@ export function EditorPage() {
             <a
               className="btn-secondary shrink-0 px-3 py-1.5 text-sm"
               href={downloadUrl(id)}
-              title={t("novelDetail.download")}
+              title={t("bookDetail.download")}
             >
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">{t("novelDetail.download")}</span>
+              <span className="hidden sm:inline">{t("bookDetail.download")}</span>
             </a>
           )}
 
@@ -655,12 +676,12 @@ export function EditorPage() {
               className="btn-secondary shrink-0 px-3 py-1.5 text-sm"
               onClick={() => drop.mutate()}
               disabled={drop.isPending}
-              title={t("novelDetail.dropHint")}
+              title={t("bookDetail.dropHint")}
             >
               {drop.isPending
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <FolderInput className="h-4 w-4" />}
-              <span className="hidden sm:inline">{t("novelDetail.copyToDrop")}</span>
+              <span className="hidden sm:inline">{t("bookDetail.copyToDrop")}</span>
             </button>
           )}
 
@@ -688,10 +709,10 @@ export function EditorPage() {
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[11px] text-stone-500 dark:text-stone-400">
             <span className="truncate">
-              {t("novelDetail.progressOf", {
+              {t("bookDetail.progressOf", {
                 done: done ?? 0,
                 total,
-                unit: t("novelDetail.unitPages"),
+                unit: t("bookDetail.unitPages"),
               })}
             </span>
             <span className="ml-2 shrink-0 tabular-nums">{progress ?? 0}%</span>
@@ -744,7 +765,7 @@ export function EditorPage() {
             </div>
           ) : (
             <PageView
-              novelId={id}
+              bookId={id}
               path={page.data.path}
               status={page.data.status}
               diff={page.data.diff}
@@ -761,6 +782,8 @@ export function EditorPage() {
               previewTick={previewTick}
               editorTab={editorTab}
               onEditorTabChange={setEditorTab}
+              mobilePane={mobilePane}
+              onMobilePaneChange={setMobilePane}
             />
           )}
         </div>
@@ -768,7 +791,7 @@ export function EditorPage() {
 
       {job.data.error && (
         <div className="card border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
-          <div className="font-medium">{t("novelDetail.cleanupFailed")}</div>
+          <div className="font-medium">{t("bookDetail.cleanupFailed")}</div>
           <div className="break-words">{job.data.error}</div>
         </div>
       )}
@@ -788,25 +811,25 @@ export function EditorPage() {
         <HistoryDrawer
           open={historyOpen}
           onClose={() => setHistoryOpen(false)}
-          novelId={id}
+          bookId={id}
           path={selected}
         />
       )}
 
-      {/* ── Per-novel AI prompt editor ──────────────────────────── */}
-      <NovelPromptModal
+      {/* ── Per-book AI prompt editor ──────────────────────────── */}
+      <BookPromptModal
         open={promptOpen}
         onClose={() => setPromptOpen(false)}
-        novelId={id}
+        bookId={id}
         initialValue={job.data.systemPrompt}
-        onSaved={() => qc.invalidateQueries({ queryKey: ["novel", id] })}
+        onSaved={() => qc.invalidateQueries({ queryKey: ["book", id] })}
       />
 
       {/* ── EPUB metadata editor (title / author / language / …) ── */}
-      <NovelMetadataModal
+      <BookMetadataModal
         open={metadataOpen}
         onClose={() => setMetadataOpen(false)}
-        novelId={id}
+        bookId={id}
         initial={{
           title:       job.data.title,
           author:      job.data.author,
@@ -814,7 +837,7 @@ export function EditorPage() {
           publisher:   job.data.publisher,
           description: job.data.description,
         }}
-        onSaved={() => qc.invalidateQueries({ queryKey: ["novel", id] })}
+        onSaved={() => qc.invalidateQueries({ queryKey: ["book", id] })}
       />
 
       {/* ── Mobile drawer (file tree) ─────────────────────────── */}
@@ -860,6 +883,9 @@ interface FileTreeProps {
   loading: boolean;
   /** Pages whose last AI pass produced unmatched items, keyed by path → unmatched count. */
   partialByPage: Map<string, number>;
+  /** Pages whose last AI pass landed at least one low-confidence item, keyed
+   *  by path → suspicious count. Drives the cyan tree dot. */
+  suspiciousByPage: Map<string, number>;
   /** Admin master switch — hides the Run-AI button when off. */
   aiEnabled: boolean;
   onRunAi: () => void;
@@ -877,7 +903,7 @@ interface FileTreeProps {
 
 function FileTree({
   pages, selected, picked, onSelect, onTogglePick, onPickAll, onPickNone, loading,
-  partialByPage, aiEnabled,
+  partialByPage, suspiciousByPage, aiEnabled,
   onRunAi, runAiPending, runAiDisabled, onCommit, commitPending, dirtyCount,
   pickedDirtyCount, onAcceptSelected, acceptSelectedPending,
   onRejectSelected, rejectSelectedPending,
@@ -920,6 +946,8 @@ function FileTree({
               const isPicked = picked.has(p.path);
               const partialUnmatched = partialByPage.get(p.path);
               const isPartial = partialUnmatched !== undefined;
+              const suspiciousCount = suspiciousByPage.get(p.path);
+              const isSuspicious = suspiciousCount !== undefined;
               return (
                 <li key={p.path}>
                   <div
@@ -938,12 +966,22 @@ function FileTree({
                       className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-stone-700 dark:accent-stone-300"
                       aria-label={`select ${name}`}
                     />
+                    {/* Suspicious wins over plain "modified" because it
+                        carries strictly more information — the page is dirty
+                        AND the LLM marked at least one item low-confidence,
+                        which is what the user actually needs to triage. */}
                     <span
                       className={clsx(
                         "h-1.5 w-1.5 shrink-0 rounded-full",
-                        isDirty ? "bg-amber-500" : "bg-transparent",
+                        isSuspicious ? "bg-cyan-500"
+                        : isDirty    ? "bg-amber-500"
+                        : "bg-transparent",
                       )}
-                      aria-label={isDirty ? "modified" : "clean"}
+                      aria-label={
+                        isSuspicious ? t("editor.suspiciousBadge", { n: suspiciousCount })
+                        : isDirty    ? "modified"
+                        : "clean"
+                      }
                     />
                     {isPartial && (
                       <AlertTriangle
@@ -1088,10 +1126,10 @@ function ActionMenu({ onReset, resetPending, aiEnabled, onEditPrompt, onEditMeta
                 <button
                   onClick={onEditPrompt}
                   className={clsx(itemBase, focus && "bg-stone-100 dark:bg-stone-700")}
-                  title={t("editor.novelPromptHint")}
+                  title={t("editor.bookPromptHint")}
                 >
                   <BookOpen className="h-4 w-4" />
-                  {t("editor.novelPrompt")}
+                  {t("editor.bookPrompt")}
                 </button>
               )}
             </MenuItem>
@@ -1116,7 +1154,7 @@ function ActionMenu({ onReset, resetPending, aiEnabled, onEditPrompt, onEditMeta
 }
 
 interface PageViewProps {
-  novelId: string;
+  bookId: string;
   path: string;
   status: string;
   diff: string;
@@ -1139,12 +1177,17 @@ interface PageViewProps {
    *  (which unmount PageView during the loading state) don't reset it. */
   editorTab: "diff" | "preview";
   onEditorTabChange: (t: "diff" | "preview") => void;
+  /** Mobile-only segmented control: which of the two stacked panes is on
+   *  screen. Lifted for the same reason as editorTab. Ignored on lg+ where
+   *  both panes render side-by-side. */
+  mobilePane: "edit" | "view";
+  onMobilePaneChange: (p: "edit" | "view") => void;
 }
 
 function PageView({
-  novelId, path, status, diff, draft, onChange, onDiscard, discarding,
+  bookId, path, status, diff, draft, onChange, onDiscard, discarding,
   onAcceptPage, acceptPending, saving, dirty, partialUnmatched, onOpenHistory,
-  previewTick, editorTab, onEditorTabChange,
+  previewTick, editorTab, onEditorTabChange, mobilePane, onMobilePaneChange,
 }: PageViewProps) {
   const { t } = useTranslation();
   const name = stripPagesPrefix(path);
@@ -1232,10 +1275,32 @@ function PageView({
         </div>
       )}
 
+      {/* Mobile-only Edit/View segmented control. Phone screens can't fit
+          both panes legibly stacked; instead we show one at a time and let
+          the user toggle. Hidden on lg+ where both panes render side-by-
+          side anyway. */}
+      <div className="flex shrink-0 items-center gap-1 border-b border-stone-200 px-2 py-1.5 lg:hidden dark:border-stone-700">
+        {(["edit", "view"] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => onMobilePaneChange(p)}
+            className={clsx(
+              "flex-1 rounded px-2 py-1 text-xs font-medium transition-colors",
+              mobilePane === p
+                ? "bg-stone-100 text-stone-900 dark:bg-stone-700 dark:text-stone-100"
+                : "text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-stone-100",
+            )}
+          >
+            {t(p === "edit" ? "editor.mobilePaneEdit" : "editor.mobilePaneView")}
+          </button>
+        ))}
+      </div>
+
       {/* Two panes: editable text on the left, diff or rendered preview on
-          the right. Explicit grid-rows constrain the panes on mobile (where
-          they stack) so neither expands past the parent. */}
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-0 lg:grid-cols-2 lg:grid-rows-1">
+          the right. On mobile only one is visible at a time (controlled by
+          mobilePane); on lg+ they share the row. */}
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 gap-0 lg:grid-cols-2">
         <textarea
           value={draft}
           onChange={(e) => onChange(e.target.value)}
@@ -1244,17 +1309,21 @@ function PageView({
           // Monospace + smaller line-height because the editor holds raw
           // chapter HTML — easier to scan tag boundaries with a fixed grid.
           // Use the Preview tab on the right for prose-rendered view.
-          className="min-h-0 w-full resize-none whitespace-pre-wrap break-words border-0 bg-transparent p-4 font-mono text-[13px] leading-6 outline-none"
+          className={clsx(
+            "min-h-0 w-full resize-none whitespace-pre-wrap break-words border-0 bg-transparent p-4 font-mono text-[13px] leading-6 outline-none lg:block",
+            mobilePane === "edit" ? "block" : "hidden",
+          )}
           placeholder={t("editor.emptyPlaceholder") ?? ""}
         />
         <RightPane
-          novelId={novelId}
+          bookId={bookId}
           path={path}
           diff={diff}
           draft={draft}
           previewTick={previewTick}
           tab={editorTab}
           onTabChange={onEditorTabChange}
+          className={mobilePane === "view" ? "flex" : "hidden lg:flex"}
         />
       </div>
     </>
@@ -1271,15 +1340,20 @@ function PageView({
 type RightTab = "diff" | "preview";
 
 function RightPane({
-  novelId, path, diff, draft, previewTick, tab, onTabChange,
+  bookId, path, diff, draft, previewTick, tab, onTabChange, className,
 }: {
-  novelId: string;
+  bookId: string;
   path: string;
   diff: string;
   draft: string;
   previewTick: number;
   tab: RightTab;
   onTabChange: (t: RightTab) => void;
+  /** Display utility classes from the parent (used to gate visibility on
+   *  mobile, where edit/view are toggled). The base `display` is set here
+   *  via `className`; `flex-col`, sizing, and theme classes stay on the
+   *  root below. */
+  className?: string;
 }) {
   const { t } = useTranslation();
   const { effective } = useTheme();
@@ -1288,12 +1362,15 @@ function RightPane({
   // Cache key bumps on every successful working-tree save and on theme
   // / source changes — iframe reloads only when something the render
   // depends on actually changed.
-  const previewSrc = `${pagePreviewUrl(novelId, path, previewSource)}&v=${previewTick}&theme=${effective}`;
+  const previewSrc = `${pagePreviewUrl(bookId, path, previewSource)}&v=${previewTick}&theme=${effective}`;
 
   return (
     // Right column sits on the same `bg-paper` / `dark:bg-stone-800` tone
     // as the left textarea so the two panes read as one surface.
-    <div className="flex min-h-0 flex-col border-t border-stone-200 bg-paper dark:border-stone-700 dark:bg-stone-800 lg:border-l lg:border-t-0">
+    <div className={clsx(
+      "min-h-0 flex-col border-t border-stone-200 bg-paper dark:border-stone-700 dark:bg-stone-800 lg:border-l lg:border-t-0",
+      className ?? "flex",
+    )}>
       <div className="flex shrink-0 items-center justify-between gap-2 border-b border-stone-200 px-2 py-1 dark:border-stone-700">
         <div className="flex items-center gap-1">
           {(["diff", "preview"] as const).map((k) => (
@@ -1339,7 +1416,7 @@ function RightPane({
       </div>
       {tab === "diff" ? (
         <DiffView
-          novelId={novelId}
+          bookId={bookId}
           path={path}
           diff={diff}
           content={draft}
@@ -1471,7 +1548,7 @@ function annotateBody(body: string[]): AnnotatedLine[] {
 }
 
 interface DiffViewProps {
-  novelId: string;
+  bookId: string;
   path: string;
   diff: string;
   /** Working-tree content for the page — interleaved with the diff hunks
@@ -1479,7 +1556,7 @@ interface DiffViewProps {
   content: string;
 }
 
-function DiffView({ novelId, path, diff, content }: DiffViewProps) {
+function DiffView({ bookId, path, diff, content }: DiffViewProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const qc = useQueryClient();
@@ -1492,22 +1569,22 @@ function DiffView({ novelId, path, diff, content }: DiffViewProps) {
   // already-validated diff lingering on screen between commit-completion
   // and refresh.
   const reject = useMutation({
-    mutationFn: (index: number) => rejectHunk(novelId, path, index),
+    mutationFn: (index: number) => rejectHunk(bookId, path, index),
     onSuccess: async () => {
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ["page", novelId, path] }),
-        qc.invalidateQueries({ queryKey: ["pages", novelId] }),
+        qc.invalidateQueries({ queryKey: ["page", bookId, path] }),
+        qc.invalidateQueries({ queryKey: ["pages", bookId] }),
       ]);
     },
     onError: (e) => toast.error(t("editor.rejectFailed"), e instanceof Error ? e.message : ""),
   });
 
   const accept = useMutation({
-    mutationFn: (index: number) => acceptHunk(novelId, path, index),
+    mutationFn: (index: number) => acceptHunk(bookId, path, index),
     onSuccess: async () => {
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ["page", novelId, path] }),
-        qc.invalidateQueries({ queryKey: ["pages", novelId] }),
+        qc.invalidateQueries({ queryKey: ["page", bookId, path] }),
+        qc.invalidateQueries({ queryKey: ["pages", bookId] }),
       ]);
     },
     onError: (e) => toast.error(t("editor.acceptFailed"), e instanceof Error ? e.message : ""),
@@ -1809,11 +1886,12 @@ function LogGroup({ groupId, lines, canJumpTo, onJumpTo }: LogGroupProps) {
   const final = lines[lines.length - 1];
   const finalLevel = final.level;
   const stripeClass =
-    finalLevel === "removed" ? "border-fuchsia-400 dark:border-fuchsia-500/60"
-    : finalLevel === "partial" ? "border-amber-500 dark:border-amber-500/70"
-    : finalLevel === "clean" ? "border-emerald-400 dark:border-emerald-500/60"
-    : finalLevel === "warn"  ? "border-amber-400 dark:border-amber-500/60"
-    : finalLevel === "error" ? "border-rose-400 dark:border-rose-500/60"
+    finalLevel === "removed"    ? "border-fuchsia-400 dark:border-fuchsia-500/60"
+    : finalLevel === "partial"  ? "border-amber-500   dark:border-amber-500/70"
+    : finalLevel === "suspicious" ? "border-cyan-400 dark:border-cyan-500/60"
+    : finalLevel === "clean"    ? "border-emerald-400 dark:border-emerald-500/60"
+    : finalLevel === "warn"     ? "border-amber-400   dark:border-amber-500/60"
+    : finalLevel === "error"    ? "border-rose-400    dark:border-rose-500/60"
     : "border-stone-300 dark:border-stone-600";
 
   const jumpable = canJumpTo(groupId);
@@ -1886,7 +1964,7 @@ function LogRow({ line, canJumpTo, onJumpTo }: LogRowProps) {
               className="ml-2 inline-flex items-center gap-0.5 rounded px-1 py-0 text-[10px] font-semibold uppercase tracking-wide text-stone-400 hover:bg-stone-100 hover:text-stone-700 dark:hover:bg-stone-700 dark:hover:text-stone-200"
             >
               {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-              {open ? t("novelDetail.hideRaw") : t("novelDetail.showRaw")}
+              {open ? t("bookDetail.hideRaw") : t("bookDetail.showRaw")}
             </button>
           )}
         </span>
@@ -1927,36 +2005,36 @@ function stripPagesPrefix(p: string) {
   return p.replace(/^pages\//, "");
 }
 
-interface NovelPromptModalProps {
+interface BookPromptModalProps {
   open: boolean;
   onClose: () => void;
-  novelId: string;
+  bookId: string;
   initialValue: string;
   onSaved: () => void;
 }
 
 /**
- * Lightweight inline modal for editing this novel's AI instructions.
- * Sits in the prompt stack as: admin → user → novel. Anything typed here
+ * Lightweight inline modal for editing this book's AI instructions.
+ * Sits in the prompt stack as: admin → user → book. Anything typed here
  * is appended last so it can override the broader directives at the LLM
  * call site (which reads instructions in order).
  */
-function NovelPromptModal({ open, onClose, novelId, initialValue, onSaved }: NovelPromptModalProps) {
+function BookPromptModal({ open, onClose, bookId, initialValue, onSaved }: BookPromptModalProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const [value, setValue] = useState(initialValue);
 
-  // Sync when the modal opens against a different novel / fresh data.
+  // Sync when the modal opens against a different book / fresh data.
   useEffect(() => { if (open) setValue(initialValue); }, [open, initialValue]);
 
   const save = useMutation({
-    mutationFn: () => saveNovelPrompt(novelId, value),
+    mutationFn: () => saveBookPrompt(bookId, value),
     onSuccess: () => {
-      toast.success(t("editor.novelPromptSaved"));
+      toast.success(t("editor.bookPromptSaved"));
       onSaved();
       onClose();
     },
-    onError: (e) => toast.error(t("editor.novelPromptFailed"), e instanceof Error ? e.message : ""),
+    onError: (e) => toast.error(t("editor.bookPromptFailed"), e instanceof Error ? e.message : ""),
   });
 
   if (!open) return null;
@@ -1969,10 +2047,10 @@ function NovelPromptModal({ open, onClose, novelId, initialValue, onSaved }: Nov
         <div className="mb-2 flex items-start justify-between gap-3">
           <div>
             <div className="text-sm font-semibold text-stone-900 dark:text-stone-100">
-              {t("editor.novelPrompt")}
+              {t("editor.bookPrompt")}
             </div>
             <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">
-              {t("editor.novelPromptHint")}
+              {t("editor.bookPromptHint")}
             </p>
           </div>
           <button
@@ -1986,19 +2064,19 @@ function NovelPromptModal({ open, onClose, novelId, initialValue, onSaved }: Nov
         <textarea
           className="input mt-2 font-mono text-xs"
           rows={6}
-          placeholder={t("editor.novelPromptPlaceholder")}
+          placeholder={t("editor.bookPromptPlaceholder")}
           value={value}
           onChange={(e) => setValue(e.target.value)}
         />
         <div className="mt-3 flex justify-end gap-2">
-          <button onClick={onClose} className="btn-secondary">{t("editor.novelPromptCancel")}</button>
+          <button onClick={onClose} className="btn-secondary">{t("editor.bookPromptCancel")}</button>
           <button
             onClick={() => save.mutate()}
             disabled={save.isPending}
             className="btn-primary"
           >
             {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            {t("editor.novelPromptSave")}
+            {t("editor.bookPromptSave")}
           </button>
         </div>
       </div>
@@ -2006,11 +2084,11 @@ function NovelPromptModal({ open, onClose, novelId, initialValue, onSaved }: Nov
   );
 }
 
-interface NovelMetadataModalProps {
+interface BookMetadataModalProps {
   open: boolean;
   onClose: () => void;
-  novelId: string;
-  initial: NovelMetadata;
+  bookId: string;
+  initial: BookMetadata;
   onSaved: () => void;
 }
 
@@ -2021,10 +2099,10 @@ interface NovelMetadataModalProps {
  * the updated metadata. Empty fields land as null and remove the corresponding
  * OPF element.
  */
-function NovelMetadataModal({ open, onClose, novelId, initial, onSaved }: NovelMetadataModalProps) {
+function BookMetadataModal({ open, onClose, bookId, initial, onSaved }: BookMetadataModalProps) {
   const { t } = useTranslation();
   const toast = useToast();
-  const [draft, setDraft] = useState<NovelMetadata>(initial);
+  const [draft, setDraft] = useState<BookMetadata>(initial);
 
   // Reset only on the closed→open transition — `initial` is a freshly
   // constructed object on every parent render (the editor's job query
@@ -2037,7 +2115,7 @@ function NovelMetadataModal({ open, onClose, novelId, initial, onSaved }: NovelM
   }, [open, initial]);
 
   const save = useMutation({
-    mutationFn: () => saveNovelMetadata(novelId, draft),
+    mutationFn: () => saveBookMetadata(bookId, draft),
     onSuccess: () => {
       toast.success(t("editor.metadataSaved"));
       onSaved();
@@ -2047,7 +2125,7 @@ function NovelMetadataModal({ open, onClose, novelId, initial, onSaved }: NovelM
   });
 
   if (!open) return null;
-  const setField = (key: keyof NovelMetadata) =>
+  const setField = (key: keyof BookMetadata) =>
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setDraft((d) => ({ ...d, [key]: e.target.value }));
 
@@ -2129,7 +2207,7 @@ function NovelMetadataModal({ open, onClose, novelId, initial, onSaved }: NovelM
 interface HistoryDrawerProps {
   open: boolean;
   onClose: () => void;
-  novelId: string;
+  bookId: string;
   path: string;
 }
 
@@ -2139,27 +2217,27 @@ interface HistoryDrawerProps {
  * drops that revision's content into the working tree as a pending diff
  * the user can then accept/reject like any other change.
  */
-function HistoryDrawer({ open, onClose, novelId, path }: HistoryDrawerProps) {
+function HistoryDrawer({ open, onClose, bookId, path }: HistoryDrawerProps) {
   const { t } = useTranslation();
   const toast = useToast();
   const qc = useQueryClient();
   const confirm = useConfirm();
 
   const history = useQuery({
-    queryKey: ["page-history", novelId, path],
-    queryFn: () => listPageHistory(novelId, path),
+    queryKey: ["page-history", bookId, path],
+    queryFn: () => listPageHistory(bookId, path),
     // Only fire when the drawer is actually open.
-    enabled: open && !!novelId && !!path,
+    enabled: open && !!bookId && !!path,
     refetchInterval: open ? 8000 : false,
   });
 
   const restore = useMutation({
-    mutationFn: (sha: string) => restorePageToCommit(novelId, path, sha),
+    mutationFn: (sha: string) => restorePageToCommit(bookId, path, sha),
     onSuccess: async () => {
       toast.success(t("editor.historyRestored"));
       await Promise.all([
-        qc.invalidateQueries({ queryKey: ["page", novelId, path] }),
-        qc.invalidateQueries({ queryKey: ["pages", novelId] }),
+        qc.invalidateQueries({ queryKey: ["page", bookId, path] }),
+        qc.invalidateQueries({ queryKey: ["pages", bookId] }),
       ]);
       onClose();
     },
@@ -2209,7 +2287,7 @@ function HistoryDrawer({ open, onClose, novelId, path }: HistoryDrawerProps) {
                   {(history.data ?? []).map((rev) => (
                     <HistoryEntry
                       key={rev.sha}
-                      novelId={novelId}
+                      bookId={bookId}
                       path={path}
                       rev={rev}
                       restoring={restore.isPending && restore.variables === rev.sha}
@@ -2235,22 +2313,22 @@ function HistoryDrawer({ open, onClose, novelId, path }: HistoryDrawerProps) {
 }
 
 interface HistoryEntryProps {
-  novelId: string;
+  bookId: string;
   path: string;
   rev: PageRevision;
   restoring: boolean;
   onRestore: () => void;
 }
 
-function HistoryEntry({ novelId, path, rev, restoring, onRestore }: HistoryEntryProps) {
+function HistoryEntry({ bookId, path, rev, restoring, onRestore }: HistoryEntryProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   // Lazy: only fetch the page-at-commit content when the user expands
   // the preview, so a long history doesn't fan out 50 GETs at once.
   const preview = useQuery({
-    queryKey: ["page-at", novelId, path, rev.sha],
-    queryFn: () => getPageAtCommit(novelId, path, rev.sha),
+    queryKey: ["page-at", bookId, path, rev.sha],
+    queryFn: () => getPageAtCommit(bookId, path, rev.sha),
     enabled: open,
     staleTime: 60_000,
   });

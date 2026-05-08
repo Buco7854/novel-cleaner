@@ -1,6 +1,6 @@
-using NovelCleaner.Server.Services;
+using Tergeo.Server.Services;
 
-namespace NovelCleaner.Server.Tests;
+namespace Tergeo.Server.Tests;
 
 public sealed class DropFolderHelperTests : IDisposable
 {
@@ -8,7 +8,7 @@ public sealed class DropFolderHelperTests : IDisposable
 
     public DropFolderHelperTests()
     {
-        _root = Path.Combine(Path.GetTempPath(), "novelcleaner-tests-" + Guid.NewGuid().ToString("N"));
+        _root = Path.Combine(Path.GetTempPath(), "tergeo-tests-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_root);
     }
 

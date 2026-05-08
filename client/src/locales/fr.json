@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Novel Cleaner",
+    "name": "Tergeo",
     "signOut": "Se déconnecter",
     "admin": "Admin",
     "loading": "Chargement…"
@@ -13,11 +13,12 @@
   },
   "nav": {
     "dashboard": "Tableau de bord",
-    "novels": "Bibliothèque",
+    "books": "Bibliothèque",
     "sources": "Sources",
     "settings": "Paramètres",
     "adminSettings": "Paramètres admin",
-    "users": "Utilisateurs"
+    "users": "Utilisateurs",
+    "usage": "Activité"
   },
   "theme": {
     "light": "Clair",
@@ -63,29 +64,29 @@
     "scanModeDescription": "Le mode motif envoie uniquement le contexte autour de chaque correspondance ; la page entière envoie chaque page.",
     "pattern": "Motif",
     "fullPage": "Page entière",
-    "recentNovels": "Romans récents",
+    "recentBooks": "Livres récents",
     "viewAll": "Voir tout",
-    "noNovels": "Aucun roman. Déposez un livre ci-dessus pour commencer.",
+    "noBooks": "Aucun livre. Déposez-en un ci-dessus pour commencer.",
     "settingsWarning": "Ajoutez une clé API et un modèle dans les <1>Paramètres</1> avant d'importer.",
     "dropHint": "Déposez des fichiers EPUB ici, ou cliquez pour parcourir",
     "dropMeta": "EPUB uniquement · plusieurs fichiers · 200 Mo max chacun"
   },
-  "novels": {
+  "books": {
     "title": "Bibliothèque",
-    "subtitle": "Tous les romans que vous avez importés. Cliquez sur une ligne pour ouvrir l'éditeur.",
+    "subtitle": "Tous les livres que vous avez importés. Cliquez sur une ligne pour ouvrir l'éditeur.",
     "file": "Fichier",
     "status": "Statut",
     "created": "Créé",
     "actions": "Actions",
-    "noNovels": "Aucun roman pour l'instant.",
+    "noBooks": "Aucun livre pour l'instant.",
     "removed": "supprimé {{count}}",
     "pagination": "Page {{current}} sur {{total}}",
     "prev": "Précédent",
     "next": "Suivant",
-    "total_one": "{{count}} roman",
-    "total_other": "{{count}} romans"
+    "total_one": "{{count}} livre",
+    "total_other": "{{count}} livres"
   },
-  "novelDetail": {
+  "bookDetail": {
     "mode": "Mode",
     "model": "Modèle",
     "removed": "Supprimé",
@@ -110,7 +111,7 @@
     "patterns": "Motifs",
     "contextWindow": "Fenêtre de contexte",
     "parallel": "Parallèle",
-    "parallelHint": "Requêtes LLM concurrentes pour ce roman (fixées au démarrage du passage IA).",
+    "parallelHint": "Requêtes LLM concurrentes pour ce livre (fixées au démarrage du passage IA).",
     "progressOf": "{{done}} / {{total}} {{unit}}",
     "unitPages": "pages",
     "unitChunks": "extraits",
@@ -187,6 +188,7 @@
     },
     "readOnly": "Lecture seule",
     "readOnlyHint": "Ces paramètres sont gérés par un administrateur. Demandez-lui de les modifier.",
+    "envManaged": "Défini par env",
     "saveApp": "Enregistrer les paramètres globaux",
     "saveUser": "Enregistrer mes paramètres",
     "scopes": {
@@ -287,6 +289,12 @@
     "loading": "Récupération du flux…",
     "empty": "Flux vide.",
     "unknownAuthor": "Auteur inconnu",
+    "seriesEntry": "{{series}} n°{{index}}",
+    "search": "Rechercher",
+    "searchLabel": "Rechercher dans ce catalogue",
+    "searchPlaceholder": "Rechercher…",
+    "searchClear": "Effacer la recherche",
+    "searchResultsTitle": "Résultats pour « {{q}} »",
     "add": "Ajouter à la bibliothèque",
     "addNonEpub": "Ajouter (non-EPUB)",
     "addAndRunAi": "Ajouter & lancer l'IA",
@@ -303,6 +311,20 @@
       "next": "Suivant",
       "last": "Fin"
     }
+  },
+  "adminUsage": {
+    "title": "Activité en cours",
+    "subtitle": "Tous les livres que le worker traite actuellement, tous utilisateurs confondus. Mettez en pause, reprenez ou arrêtez un passage depuis ici.",
+    "empty": "Aucun livre en cours, en file ou en pause pour le moment.",
+    "unknownOwner": "Propriétaire inconnu",
+    "queuedAt": "En file depuis {{time}}",
+    "startedAt": "Démarré {{time}}",
+    "pause": "Pause",
+    "resume": "Reprendre",
+    "cancel": "Arrêter",
+    "pauseFailed": "Impossible de mettre en pause",
+    "resumeFailed": "Impossible de reprendre",
+    "cancelFailed": "Impossible d'arrêter"
   },
   "users": {
     "title": "Utilisateurs",
@@ -360,6 +382,8 @@
     "savedDirtyHint": "Enregistrée — non commitée",
     "viewDiff": "Diff",
     "viewPreview": "Aperçu",
+    "mobilePaneEdit": "Édition",
+    "mobilePaneView": "Aperçu",
     "previewCurrent": "Actuel",
     "previewCurrentHint": "Affiche l'état actuel (vos modifications + propositions IA).",
     "previewDiff": "Diff",
@@ -391,6 +415,7 @@
     "acceptSelectedSuccess": "Pages sélectionnées validées.",
     "acceptSelectedFailed": "Impossible de valider les pages sélectionnées",
     "partialBadge": "Passage IA partiel — {{n}} élément(s) non appariés.",
+    "suspiciousBadge": "{{n}} élément(s) de faible confiance à examiner.",
     "partialBanner": "Le dernier passage IA proposait {{n}} suppression(s) qui n'ont pas pu être appariées verbatim — relisez ce chapitre manuellement.",
     "history": "Historique",
     "historyHint": "Voir chaque commit ayant touché cette page et restaurer n'importe lequel.",
@@ -438,13 +463,13 @@
     "metadataCancel": "Annuler",
     "metadataSaved": "Métadonnées mises à jour.",
     "metadataFailed": "Échec de l'enregistrement des métadonnées",
-    "novelPrompt": "Instructions IA pour ce roman",
-    "novelPromptHint": "Posées après les prompts admin et utilisateur. Utilisez ceci pour des consignes propres au roman — ex. « ce livre est en français », « garder tous les tirets cadratins », « le filigrane est toujours \"demo edition\" ».",
-    "novelPromptPlaceholder": "ex. « Roman de fantasy — ne pas modifier les noms inventés comme Aerysse, Kael, Ven'thara. »",
-    "novelPromptSave": "Enregistrer les instructions",
-    "novelPromptCancel": "Annuler",
-    "novelPromptSaved": "Instructions enregistrées.",
-    "novelPromptFailed": "Enregistrement impossible",
+    "bookPrompt": "Instructions IA pour ce livre",
+    "bookPromptHint": "Posées après les prompts admin et utilisateur. Utilisez ceci pour des consignes propres au livre — ex. « ce livre est en français », « garder tous les tirets cadratins », « le filigrane est toujours \"demo edition\" ».",
+    "bookPromptPlaceholder": "ex. « Roman de fantasy — ne pas modifier les noms inventés comme Aerysse, Kael, Ven'thara. »",
+    "bookPromptSave": "Enregistrer les instructions",
+    "bookPromptCancel": "Annuler",
+    "bookPromptSaved": "Instructions enregistrées.",
+    "bookPromptFailed": "Enregistrement impossible",
     "reset": "Ré-extraire depuis l'EPUB",
     "resetHint": "Vide le repo de l'éditeur et ré-extrait chaque page depuis l'EPUB original. À utiliser après une mise à jour pour que les livres existants reprennent les correctifs d'extraction (paragraphes, ordre des chapitres).",
     "resetTitle": "Ré-extraire depuis l'EPUB",

@@ -1,14 +1,14 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Xml.Linq;
-using NovelCleaner.Server.Configuration;
-using NovelCleaner.Server.Data;
-using NovelCleaner.Server.Models;
+using Tergeo.Server.Configuration;
+using Tergeo.Server.Data;
+using Tergeo.Server.Models;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
-namespace NovelCleaner.Server.Services;
+namespace Tergeo.Server.Services;
 
 public sealed record OpdsLink(string Href, string? Rel, string? Type, string? Title);
 
@@ -32,13 +32,25 @@ public sealed record OpdsBookEntry(
     string? Publisher,
     /// <summary>Publication date (dcterms:issued / atom:published) when present.</summary>
     string? Issued,
+    /// <summary>Series name from Calibre (<c>calibre:series</c>) or
+    /// schema.org (<c>schema:Series</c>) when present.</summary>
+    string? Series,
+    /// <summary>Position within the series. Kept as a string so non-integer
+    /// indices like Calibre's "1.5" survive verbatim.</summary>
+    string? SeriesIndex,
     IReadOnlyList<OpdsLink> AcquisitionLinks);
 
 public sealed record OpdsFeed(
     string? Title,
     IReadOnlyList<OpdsLink> NavigationLinks,
     IReadOnlyList<OpdsCategoryEntry> Categories,
-    IReadOnlyList<OpdsBookEntry> Books);
+    IReadOnlyList<OpdsBookEntry> Books,
+    /// <summary>
+    /// Resolved OPDS search-URL template. Contains a literal
+    /// <c>{searchTerms}</c> placeholder the client substitutes before
+    /// navigating. Null when the catalog doesn't advertise search.
+    /// </summary>
+    string? SearchTemplate);
 
 public sealed class OpdsService(
     IHttpClientFactory httpFactory,
@@ -50,6 +62,8 @@ public sealed class OpdsService(
     private static readonly XNamespace Atom     = "http://www.w3.org/2005/Atom";
     private static readonly XNamespace Dc       = "http://purl.org/dc/elements/1.1/";
     private static readonly XNamespace DcTerms  = "http://purl.org/dc/terms/";
+    private static readonly XNamespace Calibre  = "http://calibre-ebook.com/2009/metadata";
+    private static readonly XNamespace Schema   = "http://schema.org/";
     private const string AcqRel = "http://opds-spec.org/acquisition";
     private const string ImageRel = "http://opds-spec.org/image";
 
@@ -64,7 +78,61 @@ public sealed class OpdsService(
         using var resp = await http.GetAsync(url, ct);
         resp.EnsureSuccessStatusCode();
         var xml = await resp.Content.ReadAsStringAsync(ct);
-        return Parse(xml, baseUri: new Uri(url));
+        var baseUri = new Uri(url);
+        var (parsed, searchHref) = Parse(xml, baseUri);
+
+        // OPDS catalogs advertise search via a `link rel="search"` whose
+        // href usually points at an OpenSearch description document, not the
+        // search endpoint itself. Resolve the description here so the
+        // frontend gets a ready-to-substitute template back.
+        var searchTemplate = searchHref is null
+            ? null
+            : await ResolveSearchTemplateAsync(http, searchHref, baseUri, ct);
+
+        return parsed with { SearchTemplate = searchTemplate };
+    }
+
+    /// <summary>
+    /// Two link shapes seen in the wild for the search link:
+    ///   (a) href points at an OpenSearch description doc — fetch it, pull
+    ///       the `application/atom+xml` Url template out of it
+    ///   (b) href points at the search endpoint directly with the OpenSearch
+    ///       template embedded (e.g. <c>/search?q={searchTerms}</c>)
+    /// We try (a) first; on parse failure or no usable Url element, fall
+    /// back to (b) and assume the href IS the template.
+    /// </summary>
+    private static async Task<string?> ResolveSearchTemplateAsync(
+        HttpClient http, string searchHref, Uri baseUri, CancellationToken ct)
+    {
+        try
+        {
+            using var resp = await http.GetAsync(searchHref, ct);
+            if (!resp.IsSuccessStatusCode) return FallbackTemplate(searchHref, baseUri);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            // OpenSearch description: <OpenSearchDescription><Url type="..." template="..."/></OpenSearchDescription>
+            // Pick the Url whose type is an OPDS atom feed; fall back to the
+            // first Url with a template if none are explicitly atom-typed.
+            var doc = XDocument.Parse(body);
+            var urls = doc.Descendants()
+                .Where(x => x.Name.LocalName == "Url"
+                    && !string.IsNullOrEmpty(x.Attribute("template")?.Value))
+                .ToList();
+            if (urls.Count == 0) return FallbackTemplate(searchHref, baseUri);
+            var atomUrl = urls.FirstOrDefault(u =>
+                (u.Attribute("type")?.Value ?? "").Contains("atom+xml", StringComparison.OrdinalIgnoreCase))
+                ?? urls[0];
+            var template = atomUrl.Attribute("template")!.Value.Trim();
+            return Resolve(baseUri, template);
+        }
+        catch
+        {
+            return FallbackTemplate(searchHref, baseUri);
+        }
+
+        static string? FallbackTemplate(string href, Uri baseUri)
+            => href.Contains("{searchTerms}", StringComparison.Ordinal)
+                ? Resolve(baseUri, href)
+                : null;
     }
 
     /// <summary>
@@ -124,7 +192,7 @@ public sealed class OpdsService(
     private HttpClient BuildClient(OpdsSource source)
     {
         var client = httpFactory.CreateClient("opds");
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("NovelCleaner/1.0");
+        client.DefaultRequestHeaders.UserAgent.ParseAdd("Tergeo/1.0");
         if (!string.IsNullOrEmpty(source.Username))
         {
             var pwd = Decrypt(source.PasswordCipher) ?? "";
@@ -134,7 +202,7 @@ public sealed class OpdsService(
         return client;
     }
 
-    private static OpdsFeed Parse(string xml, Uri baseUri)
+    private static (OpdsFeed Feed, string? SearchHref) Parse(string xml, Uri baseUri)
     {
         XDocument doc;
         try { doc = XDocument.Parse(xml); }
@@ -154,6 +222,15 @@ public sealed class OpdsService(
                 l.Attribute("title")?.Value))
             .Where(l => !string.IsNullOrWhiteSpace(l.Href))
             .ToArray();
+
+        // OpenSearch search link. Some catalogs use rel="search"; some
+        // namespace it. Prefer the OpenSearch-typed one when multiple are
+        // present (Calibre, for instance, advertises both rel="search" and
+        // rel="self" on the same href).
+        var searchHref = navLinks.FirstOrDefault(l =>
+            l.Rel == "search"
+            && (l.Type ?? "").Contains("opensearchdescription", StringComparison.OrdinalIgnoreCase))?.Href
+            ?? navLinks.FirstOrDefault(l => l.Rel == "search")?.Href;
 
         var categories = new List<OpdsCategoryEntry>();
         var books = new List<OpdsBookEntry>();
@@ -201,6 +278,15 @@ public sealed class OpdsService(
             var issued = (e.Element(DcTerms + "issued")
                 ?? e.Element(Atom + "published"))?.Value?.Trim();
 
+            // Series + index. Two flavours seen in the wild:
+            //   1. Calibre (most common): <calibre:series>Name</calibre:series>
+            //      and <calibre:series_index>3.0</calibre:series_index>
+            //   2. schema.org: <schema:Series name="Name"><schema:position>3</schema:position></schema:Series>
+            //      (sometimes <schema:BookSeries> instead of <schema:Series>)
+            // Calibre wins when both are present — its index keeps the user's
+            // chosen precision (1.5, 2a, etc.) verbatim.
+            var (series, seriesIndex) = ReadSeries(e);
+
             var allLinks = e.Elements(Atom + "link")
                 .Select(l => new OpdsLink(
                     Resolve(baseUri, l.Attribute("href")?.Value ?? ""),
@@ -221,7 +307,8 @@ public sealed class OpdsService(
                     l.Rel == ImageRel || l.Rel == "http://opds-spec.org/image/thumbnail")?.Href;
                 books.Add(new OpdsBookEntry(
                     t, author, summary, summaryIsHtml, cover,
-                    entryCategories, languages, publisher, issued, acq));
+                    entryCategories, languages, publisher, issued,
+                    series, seriesIndex, acq));
             }
             else
             {
@@ -237,12 +324,91 @@ public sealed class OpdsService(
             }
         }
 
-        return new OpdsFeed(title, navLinks, categories, books);
+        // SearchTemplate is filled in by FetchAsync after resolving the
+        // OpenSearch description; pass null here.
+        return (new OpdsFeed(title, navLinks, categories, books, null), searchHref);
     }
 
     private static string Resolve(Uri baseUri, string href)
     {
         if (string.IsNullOrWhiteSpace(href)) return "";
         return Uri.TryCreate(baseUri, href, out var abs) ? abs.ToString() : href;
+    }
+
+    /// <summary>
+    /// Pulls series name + position from an OPDS entry. Three flavours
+    /// supported, in priority order:
+    ///   1. Calibre namespace (Calibre / Calibre-Web) — most common.
+    ///   2. EPUB 3 standard metadata as Grimmory ships it: a
+    ///      <c>&lt;meta property="belongs-to-collection" id="..."&gt;</c>
+    ///      element with a refining
+    ///      <c>&lt;meta property="group-position" refines="#id"&gt;</c>.
+    ///   3. schema.org <c>Series</c> / <c>BookSeries</c>.
+    /// Returns nulls when nothing usable is present.
+    /// </summary>
+    private static (string? Name, string? Index) ReadSeries(XElement entry)
+    {
+        var calibreName  = entry.Element(Calibre + "series")?.Value?.Trim();
+        var calibreIndex = entry.Element(Calibre + "series_index")?.Value?.Trim();
+        if (!string.IsNullOrEmpty(calibreName))
+            return (calibreName, NormalizeIndex(calibreIndex));
+
+        // EPUB 3 form. The metas don't carry a stable namespace prefix in
+        // the wild — match by local-name + the property attribute.
+        var collection = entry.Elements()
+            .FirstOrDefault(x => x.Name.LocalName == "meta"
+                && x.Attribute("property")?.Value == "belongs-to-collection");
+        if (collection is not null)
+        {
+            var name = collection.Value?.Trim();
+            if (!string.IsNullOrEmpty(name))
+            {
+                var collectionId = collection.Attribute("id")?.Value;
+                // The refining position must point back at this collection
+                // by id. When several collections nest, the refines target
+                // disambiguates which one the position applies to.
+                var position = entry.Elements()
+                    .Where(x => x.Name.LocalName == "meta"
+                        && x.Attribute("property")?.Value == "group-position")
+                    .Select(x => new
+                    {
+                        Refines = x.Attribute("refines")?.Value?.TrimStart('#'),
+                        Value = x.Value?.Trim(),
+                    })
+                    .FirstOrDefault(p => collectionId is null
+                        || string.Equals(p.Refines, collectionId, StringComparison.Ordinal));
+                return (name, NormalizeIndex(position?.Value));
+            }
+        }
+
+        // schema.org variants. The series element carries the name either as
+        // an attribute (`name="..."`) or as a `<schema:name>` child; the
+        // position is a child element. We accept both Series and BookSeries.
+        var schemaSeries = entry.Element(Schema + "Series")
+                        ?? entry.Element(Schema + "BookSeries");
+        if (schemaSeries is not null)
+        {
+            var schemaName = schemaSeries.Attribute("name")?.Value?.Trim()
+                          ?? schemaSeries.Element(Schema + "name")?.Value?.Trim();
+            var schemaPos = schemaSeries.Element(Schema + "position")?.Value?.Trim();
+            if (!string.IsNullOrEmpty(schemaName))
+                return (schemaName, NormalizeIndex(schemaPos));
+        }
+
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Trims a series-index string and drops trailing <c>.0</c> so Calibre's
+    /// canonical "3.0" renders as "3" while non-integer values like "1.5"
+    /// pass through unchanged.
+    /// </summary>
+    private static string? NormalizeIndex(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return null;
+        var trimmed = raw.Trim();
+        if (trimmed.EndsWith(".0", StringComparison.Ordinal))
+            trimmed = trimmed[..^2];
+        return trimmed.Length == 0 ? null : trimmed;
     }
 }

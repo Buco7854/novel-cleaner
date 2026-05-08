@@ -1,17 +1,17 @@
-using NovelCleaner.Server.Models;
+using Tergeo.Server.Models;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
-namespace NovelCleaner.Server.Data;
+namespace Tergeo.Server.Data;
 
 public class AppDbContext(DbContextOptions<AppDbContext> options)
     : IdentityDbContext<AppUser, AppRole, Guid>(options)
 {
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
-    public DbSet<CleanJob> CleanJobs => Set<CleanJob>();
-    public DbSet<JobLogEntry> JobLogs => Set<JobLogEntry>();
+    public DbSet<Book> Books => Set<Book>();
+    public DbSet<BookLogEntry> BookLogs => Set<BookLogEntry>();
     public DbSet<OpdsSource> OpdsSources => Set<OpdsSource>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -47,19 +47,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             b.HasIndex(u => new { u.Provider, u.ExternalSubject }).IsUnique(false);
         });
 
-        builder.Entity<CleanJob>(b =>
+        builder.Entity<Book>(b =>
         {
-            b.HasIndex(j => j.UserId);
-            b.HasIndex(j => j.Status);
-            b.HasMany(j => j.Logs)
-                .WithOne(l => l.Job)
-                .HasForeignKey(l => l.JobId)
+            b.HasIndex(n => n.UserId);
+            b.HasIndex(n => n.Status);
+            b.HasMany(n => n.Logs)
+                .WithOne(l => l.Book)
+                .HasForeignKey(l => l.BookId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        builder.Entity<JobLogEntry>(b =>
+        builder.Entity<BookLogEntry>(b =>
         {
-            b.HasIndex(l => new { l.JobId, l.Id });
+            b.HasIndex(l => new { l.BookId, l.Id });
         });
 
         builder.Entity<OpdsSource>(b =>

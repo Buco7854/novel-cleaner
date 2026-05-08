@@ -4,79 +4,79 @@ import { ChevronLeft, ChevronRight, Download, FileText, Trash2 } from "lucide-re
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
-import { deleteNovel, downloadUrl, listNovels, Novel, novelDisplayName, PAGE_SIZE } from "../api/novels";
-import { NovelStatusPill } from "../components/NovelStatusPill";
+import { deleteBook, downloadUrl, listBooks, Book, bookDisplayName, PAGE_SIZE } from "../api/books";
+import { BookStatusPill } from "../components/BookStatusPill";
 import { useToast } from "../contexts/ToastContext";
 
-export function NovelsPage() {
+export function BooksPage() {
   const { t } = useTranslation();
   const toast = useToast();
   const qc = useQueryClient();
   const [page, setPage] = useState(1);
 
-  const novels = useQuery({
-    queryKey: ["novels", "page", page],
-    queryFn: () => listNovels(page),
+  const books = useQuery({
+    queryKey: ["books", "page", page],
+    queryFn: () => listBooks(page),
     refetchInterval: 4000,
   });
 
   const remove = useMutation({
-    mutationFn: deleteNovel,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["novels"] }),
+    mutationFn: deleteBook,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["books"] }),
     onError: (e) => toast.error("Could not delete", e instanceof Error ? e.message : ""),
   });
 
-  const total = novels.data?.total ?? 0;
+  const total = books.data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const items = novels.data?.items ?? [];
-  const isEmpty = novels.data && items.length === 0;
+  const items = books.data?.items ?? [];
+  const isEmpty = books.data && items.length === 0;
 
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="page-title">{t("novels.title")}</h1>
-        <p className="page-subtitle">{t("novels.subtitle")}</p>
+        <h1 className="page-title">{t("books.title")}</h1>
+        <p className="page-subtitle">{t("books.subtitle")}</p>
       </div>
 
       <div className="card overflow-hidden">
         {/* Desktop header */}
         <div className="hidden md:grid grid-cols-[1fr_140px_180px_88px] items-center gap-4 border-b border-stone-200 bg-stone-50/70 px-5 py-2.5 text-[11px] font-medium uppercase tracking-wider text-stone-500 dark:border-stone-700 dark:bg-stone-900/50 dark:text-stone-400">
-          <div>{t("novels.file")}</div>
-          <div>{t("novels.status")}</div>
-          <div>{t("novels.created")}</div>
-          <div className="text-right">{t("novels.actions")}</div>
+          <div>{t("books.file")}</div>
+          <div>{t("books.status")}</div>
+          <div>{t("books.created")}</div>
+          <div className="text-right">{t("books.actions")}</div>
         </div>
 
         {isEmpty && (
           <div className="grid place-items-center px-6 py-12 text-sm text-stone-500 dark:text-stone-400">
-            {t("novels.noNovels")}
+            {t("books.noBooks")}
           </div>
         )}
 
         {items.map((n) => (
-          <NovelRow key={n.id} novel={n} onDelete={() => remove.mutate(n.id)} />
+          <BookRow key={n.id} book={n} onDelete={() => remove.mutate(n.id)} />
         ))}
 
         {totalPages > 1 && (
           <div className="flex flex-col items-center justify-between gap-3 border-t border-stone-200 px-4 py-3 text-xs text-stone-500 dark:border-stone-800 dark:text-stone-400 sm:flex-row sm:px-5">
-            <span>{t("novels.total_other", { count: total })}</span>
+            <span>{t("books.total_other", { count: total })}</span>
             <div className="flex items-center gap-3">
               <button
                 className="btn-secondary px-2 py-1.5"
                 disabled={page <= 1}
                 onClick={() => setPage((p) => p - 1)}
-                aria-label={t("novels.prev")}
+                aria-label={t("books.prev")}
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <span className="font-medium text-stone-700 dark:text-stone-300">
-                {t("novels.pagination", { current: page, total: totalPages })}
+                {t("books.pagination", { current: page, total: totalPages })}
               </span>
               <button
                 className="btn-secondary px-2 py-1.5"
                 disabled={page >= totalPages}
                 onClick={() => setPage((p) => p + 1)}
-                aria-label={t("novels.next")}
+                aria-label={t("books.next")}
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
@@ -88,36 +88,36 @@ export function NovelsPage() {
   );
 }
 
-function NovelRow({ novel, onDelete }: { novel: Novel; onDelete: () => void }) {
+function BookRow({ book, onDelete }: { book: Book; onDelete: () => void }) {
   const { t } = useTranslation();
-  const sizeMB = (novel.sizeBytes / 1024 / 1024).toFixed(2);
+  const sizeMB = (book.sizeBytes / 1024 / 1024).toFixed(2);
 
   return (
     <div className="border-b border-stone-200 last:border-0 hover:bg-stone-50 dark:border-stone-700 dark:hover:bg-stone-700/40">
       {/* Mobile card layout */}
       <div className="flex flex-col gap-3 p-4 md:hidden">
         <div className="flex items-start justify-between gap-3">
-          <Link to={`/novels/${novel.id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
+          <Link to={`/books/${book.id}`} className="flex min-w-0 flex-1 items-center gap-2.5">
             <FileText className="h-4 w-4 shrink-0 text-stone-400" />
             <div className="min-w-0">
-              <div className="truncate text-sm font-medium">{novelDisplayName(novel)}</div>
-              {novel.author && (
-                <div className="truncate text-xs text-stone-500 dark:text-stone-400">{novel.author}</div>
+              <div className="truncate text-sm font-medium">{bookDisplayName(book)}</div>
+              {book.author && (
+                <div className="truncate text-xs text-stone-500 dark:text-stone-400">{book.author}</div>
               )}
             </div>
           </Link>
-          <NovelStatusPill status={novel.status} />
+          <BookStatusPill status={book.status} />
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-stone-500 dark:text-stone-400">
           <span>{sizeMB} MB</span>
           <span aria-hidden>·</span>
-          <span>{t("novels.removed", { count: novel.removed })}</span>
+          <span>{t("books.removed", { count: book.removed })}</span>
         </div>
         <div className="flex items-center justify-between border-t border-stone-100 pt-2 dark:border-stone-700">
-          <span className="text-xs text-stone-500 dark:text-stone-400">{format(novel.createdAt)}</span>
+          <span className="text-xs text-stone-500 dark:text-stone-400">{format(book.createdAt)}</span>
           <div className="flex items-center gap-1">
-            {novel.hasOutput && (
-              <a className="btn-ghost px-2 py-1.5" href={downloadUrl(novel.id)} aria-label="Download">
+            {book.hasOutput && (
+              <a className="btn-ghost px-2 py-1.5" href={downloadUrl(book.id)} aria-label="Download">
                 <Download className="h-4 w-4" />
               </a>
             )}
@@ -130,23 +130,23 @@ function NovelRow({ novel, onDelete }: { novel: Novel; onDelete: () => void }) {
 
       {/* Desktop row layout */}
       <Link
-        to={`/novels/${novel.id}`}
+        to={`/books/${book.id}`}
         className="hidden md:grid grid-cols-[1fr_140px_180px_88px] items-center gap-4 px-5 py-3.5"
       >
         <div className="flex min-w-0 items-center gap-3">
           <FileText className="h-4 w-4 shrink-0 text-stone-400" />
           <div className="min-w-0">
-            <div className="truncate text-sm font-medium">{novelDisplayName(novel)}</div>
+            <div className="truncate text-sm font-medium">{bookDisplayName(book)}</div>
             <div className="truncate text-xs text-stone-500 dark:text-stone-400">
-              {novel.author ? `${novel.author} · ` : ""}{sizeMB} MB · {t("novels.removed", { count: novel.removed })}
+              {book.author ? `${book.author} · ` : ""}{sizeMB} MB · {t("books.removed", { count: book.removed })}
             </div>
           </div>
         </div>
-        <div><NovelStatusPill status={novel.status} /></div>
-        <div className="text-xs text-stone-500 dark:text-stone-400">{format(novel.createdAt)}</div>
+        <div><BookStatusPill status={book.status} /></div>
+        <div className="text-xs text-stone-500 dark:text-stone-400">{format(book.createdAt)}</div>
         <div className="flex items-center justify-end gap-1" onClick={(e) => { e.preventDefault(); }}>
-          {novel.hasOutput && (
-            <a className="btn-ghost px-2 py-1.5" href={downloadUrl(novel.id)} onClick={(e) => e.stopPropagation()} aria-label="Download">
+          {book.hasOutput && (
+            <a className="btn-ghost px-2 py-1.5" href={downloadUrl(book.id)} onClick={(e) => e.stopPropagation()} aria-label="Download">
               <Download className="h-4 w-4" />
             </a>
           )}

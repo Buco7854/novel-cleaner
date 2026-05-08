@@ -1,11 +1,11 @@
 using System.Security.Claims;
-using NovelCleaner.Server.Data;
-using NovelCleaner.Server.Models;
-using NovelCleaner.Server.Services;
+using Tergeo.Server.Data;
+using Tergeo.Server.Models;
+using Tergeo.Server.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace NovelCleaner.Server.Endpoints;
+namespace Tergeo.Server.Endpoints;
 
 public static class OpdsEndpoints
 {
@@ -98,6 +98,7 @@ public static class OpdsEndpoints
                 return Results.Ok(new
                 {
                     title = feed.Title,
+                    searchTemplate = feed.SearchTemplate,
                     navigationLinks = feed.NavigationLinks.Select(l => new
                         { l.Href, l.Rel, l.Type, l.Title }),
                     categories = feed.Categories.Select(c => new
@@ -117,6 +118,8 @@ public static class OpdsEndpoints
                         languages = b.Languages,
                         publisher = b.Publisher,
                         issued = b.Issued,
+                        series = b.Series,
+                        seriesIndex = b.SeriesIndex,
                         acquisitionLinks = b.AcquisitionLinks.Select(l => new
                             { l.Href, l.Rel, l.Type, l.Title }),
                     }),
@@ -165,7 +168,8 @@ public static class OpdsEndpoints
         // ----- Import (download + optionally queue cleaning) -----
         group.MapPost("/sources/{id:guid}/import", async (
             Guid id, HttpContext http, AppDbContext db, OpdsService opds,
-            BookImporter importer, JobQueue queue,
+            BookImporter importer, BookProcessingQueue queue,
+            AppSettingsResolver settings,
             [FromBody] ImportRequest req, CancellationToken ct) =>
         {
             var uid = UserId(http);
@@ -175,8 +179,8 @@ public static class OpdsEndpoints
             if (!IsSameOriginAsSource(req.Href, src.Url, out var reason))
                 return Results.BadRequest(new { error = reason });
 
-            var appS = await db.AppSettings.FirstOrDefaultAsync(x => x.Id == AppSettings.SingletonKey, ct);
-            if (appS is null || string.IsNullOrWhiteSpace(appS.Model))
+            var appS = await settings.ResolveAsync(ct);
+            if (string.IsNullOrWhiteSpace(appS.Model))
                 return Results.BadRequest(new { error = "Global LLM settings have not been configured by an admin yet." });
 
             var (path, name, size) = await opds.DownloadEntryAsync(src, req.Href, ct);
@@ -196,7 +200,7 @@ public static class OpdsEndpoints
             var newId = Guid.NewGuid();
             var (repoPath, meta) = await importer.ImportAsync(newId, path, ct);
 
-            var job = new CleanJob
+            var book = new Book
             {
                 Id = newId,
                 UserId = uid,
@@ -209,16 +213,16 @@ public static class OpdsEndpoints
                 Language    = meta.Language,
                 Publisher   = meta.Publisher,
                 Description = meta.Description,
-                Status = mode == OpdsImportMode.AddAndRunAi ? JobStatus.Queued : JobStatus.Idle,
+                Status = mode == OpdsImportMode.AddAndRunAi ? BookStatus.Queued : BookStatus.Idle,
                 // Admin-managed
                 MaxWorkers = appS.MaxWorkers,
                 Model = appS.Model,
             };
-            db.CleanJobs.Add(job);
+            db.Books.Add(book);
             await db.SaveChangesAsync(ct);
             if (mode == OpdsImportMode.AddAndRunAi)
-                await queue.EnqueueAsync(job.Id, ct);
-            return Results.Ok(new { novelId = job.Id });
+                await queue.EnqueueAsync(book.Id, ct);
+            return Results.Ok(new { bookId = book.Id });
         });
     }
 

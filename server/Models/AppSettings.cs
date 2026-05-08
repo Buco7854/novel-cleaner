@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace NovelCleaner.Server.Models;
+namespace Tergeo.Server.Models;
 
 /// <summary>
 /// Global, admin-managed configuration. A single row identified by
@@ -18,18 +18,18 @@ public class AppSettings
     public string BaseUrl { get; set; } = "";
     public string Model { get; set; } = "";
 
-    /// <summary>Concurrent LLM requests per job. Affects cost / rate limits, hence admin-scoped.</summary>
+    /// <summary>Concurrent LLM requests per book. Affects cost / rate limits, hence admin-scoped.</summary>
     public int MaxWorkers { get; set; } = 3;
 
     /// <summary>Optional additional instructions appended to the locked output-format prompt.</summary>
     public string? SystemPrompt { get; set; }
 
-    /// <summary>Optional absolute path to copy each cleaned EPUB to once the job finishes.</summary>
+    /// <summary>Optional absolute path to copy each cleaned EPUB to once the book finishes.</summary>
     public string? DropFolder { get; set; }
 
     /// <summary>
     /// Master switch for the LLM cleanup feature. When false the editor
-    /// hides every Run-AI affordance (per-novel button, OPDS "Add & run
+    /// hides every Run-AI affordance (per-book button, OPDS "Add & run
     /// AI", per-page filter) and the run-ai endpoint refuses to enqueue.
     /// Useful when admins want to ship the editor + library + drop-folder
     /// flow without exposing model usage / cost. Default true.

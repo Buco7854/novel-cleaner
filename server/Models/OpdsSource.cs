@@ -1,4 +1,4 @@
-namespace NovelCleaner.Server.Models;
+namespace Tergeo.Server.Models;
 
 /// <summary>
 /// What happens when the user adds a book from this OPDS feed.

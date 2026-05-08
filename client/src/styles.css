@@ -140,9 +140,14 @@
   .log-line[data-level="info"]    .lvl { @apply text-sky-600    dark:text-sky-400; }
   .log-line[data-level="warn"]    .lvl { @apply text-amber-600  dark:text-amber-400; }
   .log-line[data-level="error"]   .lvl { @apply text-rose-600   dark:text-rose-400; }
-  .log-line[data-level="removed"] .lvl { @apply text-fuchsia-600 dark:text-fuchsia-400; }
-  .log-line[data-level="partial"] .lvl { @apply text-amber-700  dark:text-amber-400; }
-  .log-line[data-level="partial"] .msg { @apply text-amber-900  dark:text-amber-200; }
-  .log-line[data-level="clean"]   .lvl { @apply text-emerald-600 dark:text-emerald-400; }
-  .log-line[data-level="summary"] .lvl { @apply text-orange-600  dark:text-orange-400; }
+  .log-line[data-level="removed"]    .lvl { @apply text-fuchsia-600 dark:text-fuchsia-400; }
+  .log-line[data-level="partial"]    .lvl { @apply text-amber-700   dark:text-amber-400; }
+  .log-line[data-level="partial"]    .msg { @apply text-amber-900   dark:text-amber-200; }
+  /* Low-confidence flags from the LLM (`watermark: false` items). Cyan to
+     stay clearly distinct from amber/orange (which signal partial-match or
+     summary lines) and from sky (`info`). */
+  .log-line[data-level="suspicious"] .lvl { @apply text-cyan-600    dark:text-cyan-400; }
+  .log-line[data-level="suspicious"] .msg { @apply text-cyan-900    dark:text-cyan-200; }
+  .log-line[data-level="clean"]      .lvl { @apply text-emerald-600 dark:text-emerald-400; }
+  .log-line[data-level="summary"]    .lvl { @apply text-orange-600  dark:text-orange-400; }
 }

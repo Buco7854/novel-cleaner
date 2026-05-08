@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 
-namespace NovelCleaner.Server.Models;
+namespace Tergeo.Server.Models;
 
 public class AppUser : IdentityUser<Guid>
 {
@@ -12,7 +12,7 @@ public class AppUser : IdentityUser<Guid>
     public DateTimeOffset? LastLoginAt { get; set; }
 
     public UserSettings? Settings { get; set; }
-    public ICollection<CleanJob> Jobs { get; set; } = [];
+    public ICollection<Book> Books { get; set; } = [];
 }
 
 public class AppRole : IdentityRole<Guid>
@@ -26,5 +26,5 @@ public static class AppRoles
     public const string Admin    = "Admin";
     public const string User     = "User";
     /// <summary>Permission to use the configured drop folder for cleaned books.</summary>
-    public const string BookDrop = "BookDrop";
+    public const string DropFolder = "DropFolder";
 }

@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Novel Cleaner",
+    "name": "Tergeo",
     "signOut": "Sign out",
     "admin": "Admin",
     "loading": "Loading…"
@@ -13,11 +13,12 @@
   },
   "nav": {
     "dashboard": "Dashboard",
-    "novels": "Library",
+    "books": "Library",
     "sources": "Sources",
     "settings": "Settings",
     "adminSettings": "Admin settings",
-    "users": "Users"
+    "users": "Users",
+    "usage": "Usage"
   },
   "theme": {
     "light": "Light",
@@ -63,29 +64,29 @@
     "scanModeDescription": "Pattern mode sends only the context surrounding each match; full-page sends every page.",
     "pattern": "Pattern",
     "fullPage": "Full-page",
-    "recentNovels": "Recent novels",
+    "recentBooks": "Recent books",
     "viewAll": "View all",
-    "noNovels": "No novels yet. Drop a book above to start.",
+    "noBooks": "No books yet. Drop a book above to start.",
     "settingsWarning": "Add an API key and model on the <1>Settings page</1> before uploading.",
     "dropHint": "Drop EPUB files here, or click to browse",
     "dropMeta": "EPUB only · multiple files · max 200 MB each"
   },
-  "novels": {
+  "books": {
     "title": "Library",
-    "subtitle": "Every novel you've uploaded. Click a row to open the editor.",
+    "subtitle": "Every book you've uploaded. Click a row to open the editor.",
     "file": "File",
     "status": "Status",
     "created": "Created",
     "actions": "Actions",
-    "noNovels": "No novels yet.",
+    "noBooks": "No books yet.",
     "removed": "removed {{count}}",
     "pagination": "Page {{current}} of {{total}}",
     "prev": "Previous",
     "next": "Next",
-    "total_one": "{{count}} novel",
-    "total_other": "{{count}} novels"
+    "total_one": "{{count}} book",
+    "total_other": "{{count}} books"
   },
-  "novelDetail": {
+  "bookDetail": {
     "mode": "Mode",
     "model": "Model",
     "removed": "Removed",
@@ -187,6 +188,7 @@
     },
     "readOnly": "Read-only",
     "readOnlyHint": "These settings are managed by an administrator. Ask an admin to change them.",
+    "envManaged": "Set by env",
     "saveApp": "Save global settings",
     "saveUser": "Save personal settings",
     "scopes": {
@@ -287,6 +289,12 @@
     "loading": "Fetching feed…",
     "empty": "Empty feed.",
     "unknownAuthor": "Unknown author",
+    "seriesEntry": "{{series}} #{{index}}",
+    "search": "Search",
+    "searchLabel": "Search this catalog",
+    "searchPlaceholder": "Search…",
+    "searchClear": "Clear search",
+    "searchResultsTitle": "Results for \"{{q}}\"",
     "add": "Add to library",
     "addNonEpub": "Add (non-EPUB)",
     "addAndRunAi": "Add & run AI",
@@ -303,6 +311,20 @@
       "next": "Next",
       "last": "Last"
     }
+  },
+  "adminUsage": {
+    "title": "Active processing",
+    "subtitle": "Every book the worker is currently processing across all users. Pause, resume or stop a run from here.",
+    "empty": "No books are running, queued or paused right now.",
+    "unknownOwner": "Unknown owner",
+    "queuedAt": "Queued {{time}}",
+    "startedAt": "Started {{time}}",
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Stop",
+    "pauseFailed": "Could not pause",
+    "resumeFailed": "Could not resume",
+    "cancelFailed": "Could not stop"
   },
   "users": {
     "title": "Users",
@@ -360,6 +382,8 @@
     "savedDirtyHint": "Saved — not committed",
     "viewDiff": "Diff",
     "viewPreview": "Preview",
+    "mobilePaneEdit": "Edit",
+    "mobilePaneView": "View",
     "previewCurrent": "Current",
     "previewCurrentHint": "Render the current working tree (your edits + AI proposals).",
     "previewDiff": "Diff",
@@ -391,6 +415,7 @@
     "acceptSelectedSuccess": "Selected pages committed.",
     "acceptSelectedFailed": "Could not accept the selected pages",
     "partialBadge": "Partial AI run — {{n}} item(s) couldn't be matched.",
+    "suspiciousBadge": "{{n}} low-confidence item(s) flagged for review.",
     "partialBanner": "The last AI pass had {{n}} proposed removal(s) that couldn't be matched verbatim — review this chapter manually.",
     "history": "History",
     "historyHint": "See every commit that touched this page and roll back to any of them.",
@@ -438,13 +463,13 @@
     "metadataCancel": "Cancel",
     "metadataSaved": "Metadata updated.",
     "metadataFailed": "Could not save metadata",
-    "novelPrompt": "AI instructions for this novel",
-    "novelPromptHint": "Layered after the admin and user prompts. Use this for novel-specific guidance — e.g. \"this book is in French\", \"keep all em-dashes\", \"the watermark always reads 'demo edition'\".",
-    "novelPromptPlaceholder": "e.g. \"This is a fantasy novel — keep made-up names like Aerysse, Kael, Ven'thara untouched.\"",
-    "novelPromptSave": "Save instructions",
-    "novelPromptCancel": "Cancel",
-    "novelPromptSaved": "Instructions saved.",
-    "novelPromptFailed": "Could not save instructions",
+    "bookPrompt": "AI instructions for this book",
+    "bookPromptHint": "Layered after the admin and user prompts. Use this for book-specific guidance — e.g. \"this book is in French\", \"keep all em-dashes\", \"the watermark always reads 'demo edition'\".",
+    "bookPromptPlaceholder": "e.g. \"This is a fantasy book — keep made-up names like Aerysse, Kael, Ven'thara untouched.\"",
+    "bookPromptSave": "Save instructions",
+    "bookPromptCancel": "Cancel",
+    "bookPromptSaved": "Instructions saved.",
+    "bookPromptFailed": "Could not save instructions",
     "reset": "Re-extract from EPUB",
     "resetHint": "Wipe the editor repo and re-extract every page from the original EPUB. Use after an upgrade so existing books pick up extraction-pipeline fixes (paragraph breaks, chapter ordering).",
     "resetTitle": "Re-extract from EPUB",

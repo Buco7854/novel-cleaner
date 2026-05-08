@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace NovelCleaner.Server.Models;
+namespace Tergeo.Server.Models;
 
 /// <summary>
 /// Per-user preferences. Cost / credentials live on <see cref="AppSettings"/>.

@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\server\NovelCleaner.Server.csproj" />
+    <ProjectReference Include="..\..\server\Tergeo.Server.csproj" />
   </ItemGroup>
 
 </Project>

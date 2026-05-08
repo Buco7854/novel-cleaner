@@ -1,26 +1,26 @@
-namespace NovelCleaner.Server.Services;
+namespace Tergeo.Server.Services;
 
 /// <summary>
 /// One-stop pipeline for "I have an EPUB on disk, give me an editor repo and
 /// the OPF metadata". Used by every entry point that produces a new
-/// CleanJob — fresh upload, OPDS import, clone — and by the reset endpoint
-/// which re-runs both halves against the same input.
+/// <see cref="Models.Book"/> — fresh upload, OPDS import, clone — and by the
+/// reset endpoint which re-runs both halves against the same input.
 ///
 /// Centralizing this lets each call site stop duplicating the
 /// docs → text → init-repo → log-on-failure dance, AND ensures every entry
 /// point reads metadata uniformly (the OPDS and clone paths used to skip it).
 /// </summary>
-public sealed class BookImporter(BookRepo bookRepo, JobLogger logger)
+public sealed class BookImporter(BookEditorRepo editorRepo, BookEventLogger logger)
 {
     /// <summary>
     /// Reads the EPUB at <paramref name="inputPath"/>, extracts visible text
     /// per chapter, initializes (or rebuilds) the editor repo for
-    /// <paramref name="jobId"/>, and reads the OPF metadata. Repo init errors
-    /// are caught and logged — the worker will retry on first run rather than
-    /// failing the whole import.
+    /// <paramref name="bookId"/>, and reads the OPF metadata. Repo init
+    /// errors are caught and logged — the worker will retry on first run
+    /// rather than failing the whole import.
     /// </summary>
     public async Task<(string? RepoPath, EpubMetadata Metadata)> ImportAsync(
-        Guid jobId, string inputPath, CancellationToken ct = default)
+        Guid bookId, string inputPath, CancellationToken ct = default)
     {
         string? repoPath = null;
         try
@@ -33,11 +33,11 @@ public sealed class BookImporter(BookRepo bookRepo, JobLogger logger)
             var pages = docs
                 .Select(d => (d.Name, EpubHandler.PrettyPrintHtml(d.Content)))
                 .ToList();
-            repoPath = bookRepo.InitFromPages(jobId, pages);
+            repoPath = editorRepo.InitFromPages(bookId, pages);
         }
         catch (Exception ex)
         {
-            await logger.LogAsync(jobId, "warn",
+            await logger.LogAsync(bookId, "warn",
                 $"Editor repo init deferred: {ex.Message}", ct);
         }
 
@@ -46,16 +46,16 @@ public sealed class BookImporter(BookRepo bookRepo, JobLogger logger)
     }
 
     /// <summary>
-    /// Copies metadata fields from the EPUB onto the job, keeping any field
-    /// the user has already populated (so an explicit edit isn't clobbered by
-    /// an EPUB that lacks that tag).
+    /// Copies metadata fields from the EPUB onto the book, keeping any
+    /// field the user has already populated (so an explicit edit isn't
+    /// clobbered by an EPUB that lacks that tag).
     /// </summary>
-    public static void ApplyMetadata(Models.CleanJob job, EpubMetadata meta, bool overwrite)
+    public static void ApplyMetadata(Models.Book book, EpubMetadata meta, bool overwrite)
     {
-        if (overwrite || job.Title       is null) job.Title       = meta.Title       ?? job.Title;
-        if (overwrite || job.Author      is null) job.Author      = meta.Author      ?? job.Author;
-        if (overwrite || job.Language    is null) job.Language    = meta.Language    ?? job.Language;
-        if (overwrite || job.Publisher   is null) job.Publisher   = meta.Publisher   ?? job.Publisher;
-        if (overwrite || job.Description is null) job.Description = meta.Description ?? job.Description;
+        if (overwrite || book.Title       is null) book.Title       = meta.Title       ?? book.Title;
+        if (overwrite || book.Author      is null) book.Author      = meta.Author      ?? book.Author;
+        if (overwrite || book.Language    is null) book.Language    = meta.Language    ?? book.Language;
+        if (overwrite || book.Publisher   is null) book.Publisher   = meta.Publisher   ?? book.Publisher;
+        if (overwrite || book.Description is null) book.Description = meta.Description ?? book.Description;
     }
 }

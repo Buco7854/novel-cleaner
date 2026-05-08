@@ -1,5 +1,21 @@
 import { api, apiJson } from "./client";
 
+/**
+ * Per-field flags telling the frontend which global settings are pinned by
+ * env config. When a field is `true`, the corresponding input renders
+ * read-only — the operator has bound it via configuration and the admin
+ * cannot change it from the UI.
+ */
+export interface AppSettingsManagedByEnv {
+  apiKey: boolean;
+  baseUrl: boolean;
+  model: boolean;
+  maxWorkers: boolean;
+  systemPrompt: boolean;
+  dropFolder: boolean;
+  aiEnabled: boolean;
+}
+
 export interface AppSettings {
   baseUrl: string;
   model: string;
@@ -13,6 +29,9 @@ export interface AppSettings {
   aiEnabled: boolean;
   /** True when the caller may PUT updates to the app section (admin only). */
   canEdit: boolean;
+  /** Per-field env-pin flags. Each field that's `true` is read-only in the
+   *  UI because an operator set it via env / config. */
+  managedByEnv: AppSettingsManagedByEnv;
 }
 
 export interface UserSettings {

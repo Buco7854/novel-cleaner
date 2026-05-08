@@ -16,10 +16,10 @@ RUN npm run build
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS server-build
 WORKDIR /src
 COPY server/*.csproj server/
-RUN dotnet restore server/NovelCleaner.Server.csproj
+RUN dotnet restore server/Tergeo.Server.csproj
 COPY server/ server/
 COPY --from=client /src/client/dist/ server/wwwroot/
-RUN dotnet publish server/NovelCleaner.Server.csproj \
+RUN dotnet publish server/Tergeo.Server.csproj \
     -c Release -o /out --no-restore /p:UseAppHost=false
 
 # ---------- Stage 3: runtime ----------
@@ -35,16 +35,16 @@ ENV ASPNETCORE_URLS=http://+:8080 \
     DOTNET_NOLOGO=1 \
     Storage__DataDirectory=/data \
     Storage__BooksDirectory=/books \
-    ConnectionStrings__Default="Data Source=/data/novelcleaner.db"
+    ConnectionStrings__Default="Data Source=/data/tergeo.db"
 
-RUN useradd -m -u 1001 -s /bin/bash novelcleaner && \
+RUN useradd -m -u 1001 -s /bin/bash tergeo && \
     mkdir -p /data /books && \
-    chown -R novelcleaner:novelcleaner /app /data /books
-USER novelcleaner
+    chown -R tergeo:tergeo /app /data /books
+USER tergeo
 
 VOLUME ["/data", "/books"]
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s \
     CMD curl -fsS http://localhost:8080/api/auth/config || exit 1
 
-ENTRYPOINT ["dotnet", "NovelCleaner.Server.dll"]
+ENTRYPOINT ["dotnet", "Tergeo.Server.dll"]

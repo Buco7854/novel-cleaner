@@ -1,7 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace NovelCleaner.Server.Services;
+namespace Tergeo.Server.Services;
 
 /// <summary>
 /// Builds a <see cref="SocketsHttpHandler"/> for outbound OPDS requests that

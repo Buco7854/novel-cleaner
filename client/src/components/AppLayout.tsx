@@ -1,6 +1,6 @@
 import { Listbox, ListboxButton, ListboxOption, ListboxOptions, Menu, MenuButton, MenuItem, MenuItems, Transition, TransitionChild } from "@headlessui/react";
 import {
-  BookOpen, Check, ChevronDown, LayoutDashboard, Library, ListChecks,
+  Activity, BookOpen, Check, ChevronDown, LayoutDashboard, Library, ListChecks,
   LogOut, Menu as MenuIcon, Monitor, Moon, Settings, Shield, Sun, Users, X,
 } from "lucide-react";
 import { Fragment, useState } from "react";
@@ -26,7 +26,7 @@ export function AppLayout() {
 
   const navItems = [
     { to: "/",          label: t("nav.dashboard"), icon: LayoutDashboard },
-    { to: "/novels",    label: t("nav.novels"),    icon: ListChecks },
+    { to: "/books",    label: t("nav.books"),    icon: ListChecks },
     { to: "/sources",   label: t("nav.sources"),   icon: Library },
   ];
 
@@ -149,6 +149,19 @@ export function AppLayout() {
                           </Link>
                         )}
                       </MenuItem>
+                      <MenuItem>
+                        {({ focus }) => (
+                          <Link
+                            to="/admin/usage"
+                            className={clsx(
+                              "flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-stone-700 dark:text-stone-200",
+                              focus && "bg-stone-100 dark:bg-stone-700",
+                            )}
+                          >
+                            <Activity className="h-4 w-4" /> {t("nav.usage")}
+                          </Link>
+                        )}
+                      </MenuItem>
                       <div className="my-1 border-t border-stone-200 dark:border-stone-700" />
                     </>
                   )}
@@ -242,6 +255,7 @@ export function AppLayout() {
                     {[
                       { to: "/admin/settings", label: t("nav.adminSettings"), icon: Shield },
                       { to: "/admin/users",    label: t("nav.users"),         icon: Users },
+                      { to: "/admin/usage",    label: t("nav.usage"),         icon: Activity },
                     ].map(({ to, label, icon: Icon }) => (
                       <NavLink
                         key={to}

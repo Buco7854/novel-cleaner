@@ -1,8 +1,8 @@
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
-using NovelCleaner.Server.Models;
+using Tergeo.Server.Models;
 
-namespace NovelCleaner.Server.Endpoints;
+namespace Tergeo.Server.Endpoints;
 
 public static class SetupEndpoints
 {
@@ -63,7 +63,7 @@ public static class SetupEndpoints
         <head>
           <meta charset="utf-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1" />
-          <title>Novel Cleaner — Setup</title>
+          <title>Tergeo — Setup</title>
           <style>
             *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
             body { font-family: system-ui, sans-serif; background: #fafaf9; color: #1c1917;

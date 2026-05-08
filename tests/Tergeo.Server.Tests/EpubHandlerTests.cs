@@ -1,7 +1,7 @@
 using System.Text;
-using NovelCleaner.Server.Services;
+using Tergeo.Server.Services;
 
-namespace NovelCleaner.Server.Tests;
+namespace Tergeo.Server.Tests;
 
 public sealed class EpubHandlerTests
 {

@@ -1,11 +1,11 @@
-using NovelCleaner.Server.Data;
-using NovelCleaner.Server.Models;
+using Tergeo.Server.Data;
+using Tergeo.Server.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
-namespace NovelCleaner.Server.Endpoints;
+namespace Tergeo.Server.Endpoints;
 
 public static class UsersEndpoints
 {

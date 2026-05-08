@@ -5,7 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
-namespace NovelCleaner.Server.Services;
+namespace Tergeo.Server.Services;
 
 public sealed record CleanResult(
     bool HasWatermarks,
@@ -15,45 +15,64 @@ public sealed record CleanResult(
 public sealed class OpenAiClient(HttpClient http, ILogger<OpenAiClient> log)
 {
     public const string DefaultSystemPrompt = """
-        You are an expert at identifying watermarks and extraneous non-novel content in ebook text.
+        You are an expert at identifying watermarks and extraneous non-book content in ebook text.
 
-        ## What you receive
-        Each request gives you WHOLE PAGES (chapters or sections) from the ebook. The text has already been extracted from the EPUB's HTML — you see prose only, no tags. Most of the content is legitimate prose; flag only the parts that clearly are not.
+        ## TASK
+        You will receive extracted text from an EPUB chapter. Flag anything that doesn't belong to the book — watermarks, tracking codes, piracy insertions, AND anything else that looks out of place. Mark each item with a `watermark` confidence flag so the user can triage them.
+        You are a delete-only annotator. Never propose insertions or rewrites.
 
-        ## What happens to your output
-        Each item you return is treated as a deletion request. The system locates that exact text inside the underlying chapter HTML and removes it, then surfaces the result to the user as a pending diff in an editor. The user reviews each removal individually and accepts or rejects it before the cleaned EPUB is written. You are a delete-only annotator — never propose insertions or rewrites; just identify what should be removed.
+        ## WHAT TO FLAG
+        1. Watermarks and tracking codes: UUIDs, distributor IDs, opaque tokens (e.g., `⟦meta:tk-8821-X⟧`, `[user-id-7f3a2b]`).
+        2. Scraper / piracy content: URLs, aggregator slogans ("read latest on freebook.example").
+        3. Purchase notices: "Purchased by user@example.com".
+        4. Anything else that looks out of place, suspicious, or weird — even when you aren't sure it's a watermark. Better to flag with low confidence than to skip.
 
-        ## What to flag
-        1. Watermarks, tracking codes, purchase notices, or distributor-inserted text (e.g. "This book was purchased by…", UUID codes, retailer footers).
-        2. Content inserted by a third party that is NOT part of the official book — scraper-site advertisements, piracy-aggregator boilerplate, "read the latest chapters on freenovel.example", login/membership prompts for sites unrelated to the author. You must be able to point to a CONCRETE third-party signal: a site name or URL the author wouldn't endorse, a tracking-code pattern (UUID, distributor ID, repeated brand token splitting prose mid-sentence), or an explicit aggregator slogan. "It reads strangely" / "the dialogue is unusual" / "this looks like a typo" is NEVER a sufficient signal — authors deliberately write typos, broken sentences, fragmented thoughts, stream of consciousness, character speech quirks, in-universe signs and posters, and other unusual prose. All of that is part of the novel.
+        ## CONFIDENCE FIELD — REQUIRED ON EVERY ITEM
+        Every item MUST carry a boolean `watermark`:
+        - `true` → you are confident this is a watermark, tracking code, piracy insertion, or third-party boilerplate.
+        - `false` → looks out of place, suspicious, or weird, but you cannot say for certain. Use this for repeated phrases that smell inserted, lone alphanumeric tokens you can't classify, odd boilerplate-looking lines, etc.
 
-        ## What to leave alone
-        Do NOT flag any in-story text, however weird it looks: typos, broken sentences, fragmented thoughts, character speech quirks, stream of consciousness, in-universe signs / posters / fictional advertisements, experimental prose, dialogue in unusual fonts. Do NOT flag anything that could plausibly come from the author or their official publisher. This includes — but is not limited to — chapter headings, tables of contents, "also by this author" pages, author's notes / prefaces / afterwords, "Book 2 is out now" or other author self-promotion, links to the author's official store / Amazon / Patreon, dedications, epigraphs, copyright and ISBN pages, glossaries, character lists, maps, content warnings, translator/editor notes, or any text that could reasonably be part of the story or its legitimate front/back matter. Official content stays, even when it's not story prose.
+        Omitting the field, sending it as a string, or sending any value other than `true` / `false` is a schema violation — the entire response will be rejected and you will be asked to redo it. Set the field on every item.
 
-        ## Output format
-        Return ONLY a JSON object with this structure:
+        The user reviews every item. A `false` rating just signals "look closer at this one"; it doesn't suppress the item. When in doubt, flag with `watermark: false` rather than skipping.
+
+        ## DO NOT FLAG
+        - Bare numbers in obvious positional roles: chapter numbers (`17`, `Chapter 23`), page numbers, footnote markers (`*`, `[1]`).
+        - Official publisher / author content: chapter headings, tables of contents, prefaces, afterwords, "also by this author", dedications, copyright pages, translator/editor notes.
+        *Rule of thumb: if removing it would delete actual story prose, leave it alone.*
+
+        ## HARD RULES FOR YOUR OUTPUT
+        1. Exact Verbatim Match: your `remove` string must copy the exact characters from the input.
+        2. NO PROSE IN `remove`: the string in `remove` must NEVER contain narrative prose, dialogue, or character speech. Isolate the token only. If you cannot isolate it without sweeping in prose, drop the item — this applies even at low confidence.
+        3. No Whitespace Logic: extract strictly the flagged text. Do not grab surrounding spaces or newlines.
+
+        ### EXAMPLES
+
+        GOOD — high confidence:
+        Source: `A familiar shape ⟦meta:tk-8821-X⟧ moved across the wall.`
+        { "items": [ { "remove": "⟦meta:tk-8821-X⟧", "watermark": true, "reason": "Distributor tracking token" } ] }
+
+        GOOD — low confidence (weird, not certain):
+        Source: `He stared at the wall. BookLight Premium Read! And then he turned away.`
+        { "items": [ { "remove": "BookLight Premium Read!", "watermark": false, "reason": "Looks like scraper-site branding but not a known signature" } ] }
+
+        BAD — `remove` contains prose (drop the item entirely):
+        Source: `17 "My, oh my! Who can tell..."`
+        { "items": [ { "remove": "17 \"My, oh my! Who can tell...\"", "watermark": false, "reason": "Looks weird" } ] }
+        *Why bad:* '17' is a chapter number, and the `remove` string contains dialogue. Return an empty items list here.
+
+        ## OUTPUT FORMAT
+        Return ONLY valid JSON. No markdown fences, no conversational text. If nothing's worth flagging, return an empty list.
+
         {
           "items": [
             {
-              "remove": "<verbatim text to delete — copy it character-for-character from the input>",
+              "remove": "<verbatim exact match>",
+              "watermark": true,
               "reason": "<brief reason>"
             }
           ]
         }
-
-        ## Rules
-        - Copy the text to remove VERBATIM — character-for-character from the input. No paraphrasing, summarising, or truncation. The system performs an exact string match first; close-but-not-exact strings will fail to apply and the item is wasted.
-        - Only flag text that is LITERALLY PRESENT in the input you were given. If you cannot point to the exact characters in the input, do NOT include the item. Do not invent or extrapolate watermarks based on patterns you have seen in other contexts.
-        - Return the SMALLEST substring that captures the watermark / inserted text. Do NOT include any surrounding prose. If a watermark is embedded mid-sentence — for example "A familiar shape ⟦meta:tk-8821-X⟧ moved across the wall" — the item to remove is "⟦meta:tk-8821-X⟧" (just the inserted token), NEVER the whole sentence. Removing surrounding narrative text is unacceptable; it deletes the author's prose.
-        - **Absorb one adjacent whitespace** so removal doesn't leave a double space, an orphan space before punctuation, or a stranded blank line. Pick whichever surrounding character is part of the watermark "envelope":
-            - Watermark sits between two words → include ONE leading or trailing space in your `remove` value. For "shape ⟦tk-8821⟧ moved", remove " ⟦tk-8821⟧" (with the leading space) — never both spaces, never neither.
-            - Watermark sits before sentence punctuation → include the space BEFORE the watermark, not after. For "the wall ⟦tk-8821⟧.", remove " ⟦tk-8821⟧" so the period stays flush against "wall".
-            - Watermark is its own paragraph or line → include the trailing newline so no blank line is left behind. For "…end of paragraph.\n⟦tk-8821⟧\nNext paragraph…", remove "⟦tk-8821⟧\n".
-            - Watermark wraps surrounding text in markers (a header + footer pair) → return the header and footer as TWO separate items, each with its adjacent whitespace absorbed; do NOT return the prose between them.
-          The goal: applying every removal verbatim leaves a body of text that reads naturally with NO double spaces, NO leading/trailing whitespace artifacts, and NO empty lines where a watermark used to be.
-        - If a passage spans multiple lines, return each distinct part as a separate item.
-        - Be conservative: when in doubt, do NOT include an item. The user reviews every proposal — false positives waste their review time, but false negatives are easy to add manually if obvious. Erring toward "leave it" is the right default.
-        - Return an empty items list if nothing in the input clearly qualifies.
         """;
 
     private const int MaxRetries = 4;
@@ -162,9 +181,19 @@ public sealed class OpenAiClient(HttpClient http, ILogger<OpenAiClient> log)
                 : new();
         }
 
-        var items = (parsed.Items ?? [])
+        var nonEmpty = (parsed.Items ?? [])
             .Where(i => !string.IsNullOrWhiteSpace(i.Remove))
-            .Select(i => new RemovalInstruction(i.Remove!, i.Reason ?? ""))
+            .ToList();
+
+        // `watermark` is required on every non-empty item. A missing field
+        // means the model didn't follow the schema — drop the whole response
+        // and let IdentifyWatermarksAsync's retry loop ask for another.
+        if (nonEmpty.Any(i => i.Watermark is null))
+            throw new InvalidLlmResponseException(
+                "Response missing required `watermark` boolean on at least one item.");
+
+        var items = nonEmpty
+            .Select(i => new RemovalInstruction(i.Remove!, i.Reason ?? "", i.Watermark!.Value))
             .ToArray();
 
         return new CleanResult(items.Length > 0, items, cleanedRaw);
@@ -201,10 +230,29 @@ public sealed class OpenAiClient(HttpClient http, ILogger<OpenAiClient> log)
     {
         [JsonPropertyName("remove")] public string? Remove { get; set; }
         [JsonPropertyName("reason")] public string? Reason { get; set; }
+        /// <summary>
+        /// Confidence flag from the LLM. <c>true</c> = confident watermark
+        /// / tracking code / boilerplate; <c>false</c> = weird / suspicious
+        /// but uncertain. Nullable to detect "field not provided" so the
+        /// caller can default to confident on legacy responses.
+        /// </summary>
+        [JsonPropertyName("watermark")] public bool? Watermark { get; set; }
     }
 }
 
 public sealed class RateLimitException : Exception
 {
     public RateLimitException() : base("rate limited") { }
+}
+
+/// <summary>
+/// Thrown when the LLM's JSON deserializes but doesn't conform to the
+/// expected schema — for example an item missing the required
+/// <c>watermark</c> boolean. The retry loop in
+/// <see cref="OpenAiClient.IdentifyWatermarksAsync"/> treats this like any
+/// other transient call failure and asks the model again.
+/// </summary>
+public sealed class InvalidLlmResponseException : Exception
+{
+    public InvalidLlmResponseException(string message) : base(message) { }
 }

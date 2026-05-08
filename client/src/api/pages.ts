@@ -18,21 +18,21 @@ export interface PageDetail {
   diff: string;
 }
 
-export const listPages = (novelId: string) =>
-  api<PageEntry[]>(`/api/novels/${novelId}/pages/`);
+export const listPages = (bookId: string) =>
+  api<PageEntry[]>(`/api/books/${bookId}/pages/`);
 
-export const getPage = (novelId: string, path: string) =>
-  api<PageDetail>(`/api/novels/${novelId}/pages/page?path=${encodeURIComponent(path)}`);
+export const getPage = (bookId: string, path: string) =>
+  api<PageDetail>(`/api/books/${bookId}/pages/page?path=${encodeURIComponent(path)}`);
 
-export const writePage = (novelId: string, path: string, content: string) =>
-  apiJson<null>(`/api/novels/${novelId}/pages/page?path=${encodeURIComponent(path)}`, "PUT", { content });
+export const writePage = (bookId: string, path: string, content: string) =>
+  apiJson<null>(`/api/books/${bookId}/pages/page?path=${encodeURIComponent(path)}`, "PUT", { content });
 
-export const commitPages = (novelId: string, message?: string) =>
-  apiJson<{ committed: boolean }>(`/api/novels/${novelId}/pages/commit`, "POST", { message });
+export const commitPages = (bookId: string, message?: string) =>
+  apiJson<{ committed: boolean }>(`/api/books/${bookId}/pages/commit`, "POST", { message });
 
-export const commitPage = (novelId: string, path: string, message?: string) =>
+export const commitPage = (bookId: string, path: string, message?: string) =>
   apiJson<{ committed: boolean }>(
-    `/api/novels/${novelId}/pages/commit-page?path=${encodeURIComponent(path)}`,
+    `/api/books/${bookId}/pages/commit-page?path=${encodeURIComponent(path)}`,
     "POST", { message });
 
 /**
@@ -41,29 +41,29 @@ export const commitPage = (novelId: string, path: string, message?: string) =>
  * Returned <code>committed</code> is false when none of the listed paths
  * had changes.
  */
-export const commitManyPages = (novelId: string, paths: string[], message?: string) =>
+export const commitManyPages = (bookId: string, paths: string[], message?: string) =>
   apiJson<{ committed: boolean }>(
-    `/api/novels/${novelId}/pages/commit-many`,
+    `/api/books/${bookId}/pages/commit-many`,
     "POST", { paths, message });
 
 /**
  * Batch reject: discard working-tree changes for every page in
  * <code>paths</code>. Pages with no changes are skipped server-side.
  */
-export const discardManyPages = (novelId: string, paths: string[]) =>
-  apiJson<null>(`/api/novels/${novelId}/pages/discard-many`, "POST", { paths });
+export const discardManyPages = (bookId: string, paths: string[]) =>
+  apiJson<null>(`/api/books/${bookId}/pages/discard-many`, "POST", { paths });
 
-export const discardPage = (novelId: string, path: string) =>
-  apiJson<null>(`/api/novels/${novelId}/pages/discard?path=${encodeURIComponent(path)}`, "POST", {});
+export const discardPage = (bookId: string, path: string) =>
+  apiJson<null>(`/api/books/${bookId}/pages/discard?path=${encodeURIComponent(path)}`, "POST", {});
 
-export const rejectHunk = (novelId: string, path: string, index: number) =>
+export const rejectHunk = (bookId: string, path: string, index: number) =>
   apiJson<null>(
-    `/api/novels/${novelId}/pages/reject-hunk?path=${encodeURIComponent(path)}&index=${index}`,
+    `/api/books/${bookId}/pages/reject-hunk?path=${encodeURIComponent(path)}&index=${index}`,
     "POST", {});
 
-export const acceptHunk = (novelId: string, path: string, index: number) =>
+export const acceptHunk = (bookId: string, path: string, index: number) =>
   apiJson<null>(
-    `/api/novels/${novelId}/pages/accept-hunk?path=${encodeURIComponent(path)}&index=${index}`,
+    `/api/books/${bookId}/pages/accept-hunk?path=${encodeURIComponent(path)}&index=${index}`,
     "POST", {});
 
 /**
@@ -72,8 +72,8 @@ export const acceptHunk = (novelId: string, path: string, index: number) =>
  * an extraction-pipeline change has shipped and existing repos need to
  * pick up the fix.
  */
-export const resetRepo = (novelId: string) =>
-  apiJson<{ pages: number }>(`/api/novels/${novelId}/pages/reset`, "POST", {});
+export const resetRepo = (bookId: string) =>
+  apiJson<{ pages: number }>(`/api/books/${bookId}/pages/reset`, "POST", {});
 
 /** URL of the rendered HTML preview for a single page. Designed for an
  *  iframe `src` — the server returns a fully-formed HTML/XHTML document.
@@ -86,11 +86,11 @@ export const resetRepo = (novelId: string) =>
 export type PreviewSource = "working" | "diff";
 
 export const pagePreviewUrl = (
-  novelId: string,
+  bookId: string,
   path: string,
   source: PreviewSource = "working",
 ) =>
-  `/api/novels/${novelId}/pages/preview?path=${encodeURIComponent(path)}&source=${source}`;
+  `/api/books/${bookId}/pages/preview?path=${encodeURIComponent(path)}&source=${source}`;
 
 export interface PageRevision {
   sha: string;
@@ -101,18 +101,18 @@ export interface PageRevision {
 }
 
 /** History (commits that touched this page), newest-first. */
-export const listPageHistory = (novelId: string, path: string) =>
-  api<PageRevision[]>(`/api/novels/${novelId}/pages/history?path=${encodeURIComponent(path)}`);
+export const listPageHistory = (bookId: string, path: string) =>
+  api<PageRevision[]>(`/api/books/${bookId}/pages/history?path=${encodeURIComponent(path)}`);
 
 /** Page content as it was at <code>sha</code>. */
-export const getPageAtCommit = (novelId: string, path: string, sha: string) =>
+export const getPageAtCommit = (bookId: string, path: string, sha: string) =>
   api<{ content: string }>(
-    `/api/novels/${novelId}/pages/at?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(sha)}`,
+    `/api/books/${bookId}/pages/at?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(sha)}`,
   );
 
 /** Drop the page's content at <code>sha</code> into the working tree —
  *  surfaces as a pending diff for review, doesn't commit. */
-export const restorePageToCommit = (novelId: string, path: string, sha: string) =>
+export const restorePageToCommit = (bookId: string, path: string, sha: string) =>
   apiJson<null>(
-    `/api/novels/${novelId}/pages/restore?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(sha)}`,
+    `/api/books/${bookId}/pages/restore?path=${encodeURIComponent(path)}&sha=${encodeURIComponent(sha)}`,
     "POST", {});

@@ -4,9 +4,9 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <RootNamespace>NovelCleaner.Server</RootNamespace>
-    <AssemblyName>NovelCleaner.Server</AssemblyName>
-    <UserSecretsId>novel-cleaner-server</UserSecretsId>
+    <RootNamespace>Tergeo.Server</RootNamespace>
+    <AssemblyName>Tergeo.Server</AssemblyName>
+    <UserSecretsId>tergeo-server</UserSecretsId>
     <InvariantGlobalization>false</InvariantGlobalization>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>

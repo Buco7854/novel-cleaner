@@ -4,13 +4,13 @@
 
 services:
   app:
-    image: ${NOVELCLEANER_IMAGE:-ghcr.io/buco7854/novel-cleaner:latest}
+    image: ${TERGEO_IMAGE:-ghcr.io/buco7854/tergeo:latest}
     # Or build from source instead:
     # build: .
-    container_name: novel-cleaner
+    container_name: tergeo
     restart: unless-stopped
     ports:
-      - "${NOVELCLEANER_PORT:-8080}:8080"
+      - "${TERGEO_PORT:-8080}:8080"
     env_file:
       - path: .env
         required: false
@@ -19,57 +19,71 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
 
       # ---- Storage ----
-      Storage__DataDirectory:   ${NOVELCLEANER_DATA_DIR:-/data}
-      Storage__BooksDirectory:  ${NOVELCLEANER_BOOKS_DIR:-/books}
-      Storage__MaxUploadBytes:  ${NOVELCLEANER_MAX_UPLOAD_BYTES:-209715200}
-      ConnectionStrings__Default: "Data Source=${NOVELCLEANER_DATA_DIR:-/data}/novelcleaner.db"
+      Storage__DataDirectory:   ${TERGEO_DATA_DIR:-/data}
+      Storage__BooksDirectory:  ${TERGEO_BOOKS_DIR:-/books}
+      Storage__MaxUploadBytes:  ${TERGEO_MAX_UPLOAD_BYTES:-209715200}
+      ConnectionStrings__Default: "Data Source=${TERGEO_DATA_DIR:-/data}/tergeo.db"
 
       # ---- Local password auth ----
-      Auth__Password__Enabled:  ${NOVELCLEANER_PASSWORD_AUTH_ENABLED:-true}
+      Auth__Password__Enabled:  ${TERGEO_PASSWORD_AUTH_ENABLED:-true}
       # Optional bootstrap admin. Leave both empty to land on the setup page.
-      Auth__FirstAdminEmail:    ${NOVELCLEANER_FIRST_ADMIN_EMAIL:-}
-      Auth__FirstAdminPassword: ${NOVELCLEANER_FIRST_ADMIN_PASSWORD:-}
+      Auth__FirstAdminEmail:    ${TERGEO_FIRST_ADMIN_EMAIL:-}
+      Auth__FirstAdminPassword: ${TERGEO_FIRST_ADMIN_PASSWORD:-}
 
       # ---- Reverse-proxy trust ----
       # Loopback + RFC 1918 + IPv6-ULA are trusted by default. Extra ranges
       # / IPs (comma-separated) get added on top. Set to "0.0.0.0/0,::/0"
       # to trust any proxy.
-      ForwardedHeaders__KnownNetworks: ${NOVELCLEANER_FORWARDED_KNOWN_NETWORKS:-}
-      ForwardedHeaders__KnownProxies:  ${NOVELCLEANER_FORWARDED_KNOWN_PROXIES:-}
+      ForwardedHeaders__KnownNetworks: ${TERGEO_FORWARDED_KNOWN_NETWORKS:-}
+      ForwardedHeaders__KnownProxies:  ${TERGEO_FORWARDED_KNOWN_PROXIES:-}
 
       # ---- OPDS ----
-      Opds__AllowPrivateNetworks: ${NOVELCLEANER_OPDS_ALLOW_PRIVATE_NETWORKS:-false}
+      Opds__AllowPrivateNetworks: ${TERGEO_OPDS_ALLOW_PRIVATE_NETWORKS:-false}
 
       # ---- OIDC ----
-      Auth__Oidc__Enabled:      ${NOVELCLEANER_OIDC_ENABLED:-false}
-      Auth__Oidc__ClientId:     ${NOVELCLEANER_OIDC_CLIENT_ID:-}
-      Auth__Oidc__ClientSecret: ${NOVELCLEANER_OIDC_CLIENT_SECRET:-}
-      Auth__Oidc__DisplayName:  ${NOVELCLEANER_OIDC_DISPLAY_NAME:-single sign-on}
+      Auth__Oidc__Enabled:      ${TERGEO_OIDC_ENABLED:-false}
+      Auth__Oidc__ClientId:     ${TERGEO_OIDC_CLIENT_ID:-}
+      Auth__Oidc__ClientSecret: ${TERGEO_OIDC_CLIENT_SECRET:-}
+      Auth__Oidc__DisplayName:  ${TERGEO_OIDC_DISPLAY_NAME:-single sign-on}
       # Mode (a) standard discovery
-      Auth__Oidc__Authority: ${NOVELCLEANER_OIDC_AUTHORITY:-}
+      Auth__Oidc__Authority: ${TERGEO_OIDC_AUTHORITY:-}
       # Mode (b) explicit discovery URL
-      Auth__Oidc__MetadataAddress: ${NOVELCLEANER_OIDC_METADATA_ADDRESS:-}
+      Auth__Oidc__MetadataAddress: ${TERGEO_OIDC_METADATA_ADDRESS:-}
       # Mode (c) fully manual endpoints
-      Auth__Oidc__Issuer:                ${NOVELCLEANER_OIDC_ISSUER:-}
-      Auth__Oidc__AuthorizationEndpoint: ${NOVELCLEANER_OIDC_AUTHORIZATION_ENDPOINT:-}
-      Auth__Oidc__TokenEndpoint:         ${NOVELCLEANER_OIDC_TOKEN_ENDPOINT:-}
-      Auth__Oidc__UserInfoEndpoint:      ${NOVELCLEANER_OIDC_USERINFO_ENDPOINT:-}
-      Auth__Oidc__JwksUri:               ${NOVELCLEANER_OIDC_JWKS_URI:-}
-      Auth__Oidc__EndSessionEndpoint:    ${NOVELCLEANER_OIDC_END_SESSION_ENDPOINT:-}
+      Auth__Oidc__Issuer:                ${TERGEO_OIDC_ISSUER:-}
+      Auth__Oidc__AuthorizationEndpoint: ${TERGEO_OIDC_AUTHORIZATION_ENDPOINT:-}
+      Auth__Oidc__TokenEndpoint:         ${TERGEO_OIDC_TOKEN_ENDPOINT:-}
+      Auth__Oidc__UserInfoEndpoint:      ${TERGEO_OIDC_USERINFO_ENDPOINT:-}
+      Auth__Oidc__JwksUri:               ${TERGEO_OIDC_JWKS_URI:-}
+      Auth__Oidc__EndSessionEndpoint:    ${TERGEO_OIDC_END_SESSION_ENDPOINT:-}
       # Group → role mapping (optional).
       # Empty AdminGroup → admin role isn't managed by OIDC; manual promotions stick.
-      # Empty DropGroup  → BookDrop role isn't managed by OIDC. Only consulted
-      # when DefaultBookDrop is false.
-      Auth__Oidc__GroupsClaim:         ${NOVELCLEANER_OIDC_GROUPS_CLAIM:-groups}
-      Auth__Oidc__AdminGroups__0:      ${NOVELCLEANER_OIDC_ADMIN_GROUP:-}
-      Auth__Oidc__DropFolderGroups__0: ${NOVELCLEANER_OIDC_DROP_GROUP:-}
-      Auth__Oidc__AutoProvision:       ${NOVELCLEANER_OIDC_AUTO_PROVISION:-true}
+      # Empty DropGroup  → DropFolder role isn't managed by OIDC. Only consulted
+      # when DefaultDropFolder is false.
+      Auth__Oidc__GroupsClaim:         ${TERGEO_OIDC_GROUPS_CLAIM:-groups}
+      Auth__Oidc__AdminGroups__0:      ${TERGEO_OIDC_ADMIN_GROUP:-}
+      Auth__Oidc__DropFolderGroups__0: ${TERGEO_OIDC_DROP_GROUP:-}
+      Auth__Oidc__AutoProvision:       ${TERGEO_OIDC_AUTO_PROVISION:-true}
 
       # Default permissions
-      Auth__DefaultBookDrop: ${NOVELCLEANER_DEFAULT_BOOK_DROP:-true}
+      Auth__DefaultDropFolder: ${TERGEO_DEFAULT_DROP_FOLDER:-true}
+
+      # ---- Optional global admin settings via env ----
+      # Anything set here pins the field as read-only in the admin UI; if a
+      # value is left empty (the `:-` default), the corresponding row in the
+      # AppSettings table wins instead. Useful when you want the LLM creds
+      # / drop folder / AI master switch managed by the operator's secrets
+      # store rather than by an admin user via the web UI.
+      App__ApiKey:        ${TERGEO_LLM_API_KEY:-}
+      App__BaseUrl:       ${TERGEO_LLM_BASE_URL:-}
+      App__Model:         ${TERGEO_LLM_MODEL:-}
+      App__MaxWorkers:    ${TERGEO_LLM_MAX_WORKERS:-}
+      App__SystemPrompt:  ${TERGEO_LLM_SYSTEM_PROMPT:-}
+      App__DropFolder:    ${TERGEO_DROP_FOLDER:-}
+      App__AiEnabled:     ${TERGEO_AI_ENABLED:-}
     volumes:
-      - novelcleaner-data:/data
-      - novelcleaner-books:/books
+      - tergeo-data:/data
+      - tergeo-books:/books
       # Optional: per-user "drop folder" — when enabled in Settings (UI),
       # finished cleaned EPUBs are auto-copied here. Uncomment and point the
       # left side at a host directory (or a named volume / Calibre import
@@ -84,5 +98,5 @@ services:
       retries: 3
 
 volumes:
-  novelcleaner-data:
-  novelcleaner-books:
+  tergeo-data:
+  tergeo-books:

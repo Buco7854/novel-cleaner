@@ -7,11 +7,11 @@ using AngleSharp.Dom;
 using AngleSharp.Html;
 using AngleSharp.Html.Parser;
 
-namespace NovelCleaner.Server.Services;
+namespace Tergeo.Server.Services;
 
 public sealed record EpubDocument(string Name, byte[] Content);
-public sealed record RemovalInstruction(string Remove, string Reason);
-public sealed record AppliedRemoval(string Removed, string Reason);
+public sealed record RemovalInstruction(string Remove, string Reason, bool IsWatermark = true);
+public sealed record AppliedRemoval(string Removed, string Reason, bool IsWatermark = true);
 
 /// <summary>Subset of EPUB OPF metadata we surface for display and editing.
 /// All fields are optional — sparse EPUBs and older catalogs may omit any of them.</summary>
@@ -455,7 +455,7 @@ public static class EpubHandler
             if (hit is null) continue;
             html = RemoveVisibleCharsInRange(html, hit.Value.Index, hit.Value.Index + hit.Value.Length);
             html = HealSpacingAt(html, hit.Value.Index);
-            applied.Add(new AppliedRemoval(needle, instr.Reason));
+            applied.Add(new AppliedRemoval(needle, instr.Reason, instr.IsWatermark));
         }
 
         html = EmptyTags.Replace(html, "");
@@ -618,26 +618,58 @@ public static class EpubHandler
     private static readonly char[] SentencePunct = ['.', ',', ';', ':', '!', '?'];
 
     /// <summary>
-    /// Heals the two common spacing artifacts that surface when the LLM
-    /// strips just the watermark token without absorbing surrounding spaces:
-    ///  - <c>"sheer  size"</c> (double whitespace where one was before)
-    ///  - <c>"continues  ."</c> (orphan space before sentence punctuation)
-    /// Acts only at <paramref name="gap"/> — the position where the removal
-    /// took place — so we don't touch unrelated formatting.
+    /// Heals the spacing artifacts that surface when the LLM hands us a bare
+    /// watermark token without absorbing surrounding whitespace. The prompt
+    /// no longer asks the model to do whitespace logic; this function does it
+    /// post-hoc against the full whitespace run that straddles
+    /// <paramref name="gap"/> (the position where the removal happened):
+    ///
+    /// - Run between two visible chars  → collapse to a single space (or
+    ///   a single newline if any newline was in the run).
+    /// - Run before sentence punctuation → drop entirely so punctuation
+    ///   sits flush against the preceding word.
+    /// - Run abutting a tag boundary    → drop entirely (or keep one
+    ///   newline if the run contained one, so block-level layout
+    ///   survives).
+    ///
+    /// Operating on the whole run (not just the immediate two chars) means
+    /// we still produce a clean result when the source already had multiple
+    /// spaces around the watermark before removal, e.g.
+    /// <c>"word    [WM]    word"</c>.
     /// </summary>
     private static string HealSpacingAt(string html, int gap)
     {
-        if (gap <= 0 || gap >= html.Length) return html;
-        var before = html[gap - 1];
-        var after  = html[gap];
+        if (gap < 0 || gap > html.Length) return html;
 
-        if (char.IsWhiteSpace(before) && char.IsWhiteSpace(after))
-            return html.Remove(gap, 1);
+        // Expand to the full whitespace run that bridges `gap`.
+        var left = gap;
+        while (left > 0 && char.IsWhiteSpace(html[left - 1])) left--;
+        var right = gap;
+        while (right < html.Length && char.IsWhiteSpace(html[right])) right++;
+        if (left == right) return html;
 
-        if (char.IsWhiteSpace(before) && Array.IndexOf(SentencePunct, after) >= 0)
-            return html.Remove(gap - 1, 1);
+        var leftCtx  = left  > 0           ? html[left - 1] : '\0';
+        var rightCtx = right < html.Length ? html[right]    : '\0';
 
-        return html;
+        var hasNewline = false;
+        for (var i = left; i < right; i++)
+        {
+            if (html[i] == '\n') { hasNewline = true; break; }
+        }
+
+        var atTagBoundary = leftCtx == '>' || rightCtx == '<';
+        var beforePunct   = Array.IndexOf(SentencePunct, rightCtx) >= 0;
+
+        string replacement;
+        if (beforePunct)
+            replacement = "";
+        else if (atTagBoundary)
+            replacement = hasNewline ? "\n" : "";
+        else
+            replacement = hasNewline ? "\n" : " ";
+
+        if (replacement.Length == right - left) return html;
+        return html.Substring(0, left) + replacement + html.Substring(right);
     }
 
     /// <summary>

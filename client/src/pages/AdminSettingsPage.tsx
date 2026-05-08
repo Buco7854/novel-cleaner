@@ -57,6 +57,14 @@ export function AdminSettingsPage() {
   }
 
   const readOnly = !form.canEdit;
+  const env = form.managedByEnv ?? {
+    apiKey: false, baseUrl: false, model: false, maxWorkers: false,
+    systemPrompt: false, dropFolder: false, aiEnabled: false,
+  };
+  // Per-field disabled = global read-only OR pinned by env.
+  const lock = (field: keyof typeof env) => readOnly || env[field];
+  const envHint = (field: keyof typeof env) =>
+    env[field] ? t("settings.envManaged") : undefined;
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
@@ -83,13 +91,14 @@ export function AdminSettingsPage() {
           <input
             type="checkbox"
             className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-stone-700 dark:accent-stone-300"
-            disabled={readOnly}
+            disabled={lock("aiEnabled")}
             checked={form.aiEnabled}
             onChange={(e) => update("aiEnabled", e.target.checked)}
           />
           <div className="min-w-0">
             <div className="text-sm font-medium">{t("settings.aiFeature.toggle")}</div>
             <div className="text-xs text-stone-500 dark:text-stone-400">{t("settings.aiFeature.toggleHint")}</div>
+            {env.aiEnabled && <EnvBadge label={t("settings.envManaged")} />}
           </div>
         </label>
       </Section>
@@ -98,26 +107,27 @@ export function AdminSettingsPage() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field
             label={t("settings.llm.apiKey")}
-            hint={form.hasApiKey ? t("settings.llm.apiKeySet") : t("settings.llm.apiKeyRequired")}
+            hint={envHint("apiKey")
+              ?? (form.hasApiKey ? t("settings.llm.apiKeySet") : t("settings.llm.apiKeyRequired"))}
           >
             <input className="input" type="password" autoComplete="off"
               placeholder={form.hasApiKey ? "•••••••••••••" : "sk-…"}
-              disabled={readOnly}
+              disabled={lock("apiKey")}
               value={apiKey} onChange={(e) => setApiKey(e.target.value)} />
           </Field>
-          <Field label={t("settings.llm.baseUrl")} hint={t("settings.llm.baseUrlHint")}>
+          <Field label={t("settings.llm.baseUrl")} hint={envHint("baseUrl") ?? t("settings.llm.baseUrlHint")}>
             <input className="input" placeholder="https://api.openai.com/v1"
-              disabled={readOnly}
+              disabled={lock("baseUrl")}
               value={form.baseUrl} onChange={(e) => update("baseUrl", e.target.value)} />
           </Field>
-          <Field label={t("settings.llm.model")} hint={t("settings.llm.modelHint")}>
+          <Field label={t("settings.llm.model")} hint={envHint("model") ?? t("settings.llm.modelHint")}>
             <input className="input" placeholder="gpt-4o-mini"
-              disabled={readOnly}
+              disabled={lock("model")}
               value={form.model} onChange={(e) => update("model", e.target.value)} />
           </Field>
-          <Field label={t("settings.scanning.parallelRequests")}>
+          <Field label={t("settings.scanning.parallelRequests")} hint={envHint("maxWorkers")}>
             <input className="input" type="number" min={1} max={10} step={1}
-              disabled={readOnly}
+              disabled={lock("maxWorkers")}
               value={form.maxWorkers}
               onChange={(e) => update("maxWorkers", Math.min(10, Math.max(1, +e.target.value || 1)))} />
           </Field>
@@ -142,24 +152,26 @@ export function AdminSettingsPage() {
             className="input font-mono text-xs"
             rows={5}
             placeholder={t("settings.prompt.additionalPlaceholder")}
-            disabled={readOnly}
+            disabled={lock("systemPrompt")}
             value={form.systemPrompt}
             onChange={(e) => update("systemPrompt", e.target.value)}
           />
           <p className="text-xs text-stone-500 dark:text-stone-400">
-            {form.systemPrompt.trim()
-              ? t("settings.prompt.hasAdditions")
-              : t("settings.prompt.noAdditions")}
+            {env.systemPrompt
+              ? t("settings.envManaged")
+              : (form.systemPrompt.trim()
+                  ? t("settings.prompt.hasAdditions")
+                  : t("settings.prompt.noAdditions"))}
           </p>
         </div>
       </Section>
 
       <Section title={t("settings.dropFolder.title")} subtitle={t("settings.dropFolder.subtitle")}>
-        <Field label={t("settings.dropFolder.label")} hint={t("settings.dropFolder.hint")}>
+        <Field label={t("settings.dropFolder.label")} hint={envHint("dropFolder") ?? t("settings.dropFolder.hint")}>
           <input
             className="input font-mono"
             placeholder={t("settings.dropFolder.placeholder")}
-            disabled={readOnly}
+            disabled={lock("dropFolder")}
             value={form.dropFolder}
             onChange={(e) => update("dropFolder", e.target.value)}
           />
@@ -196,5 +208,14 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
       {children}
       {hint && <p className="mt-1 text-xs text-stone-500 dark:text-stone-400">{hint}</p>}
     </div>
+  );
+}
+
+/** Small inline pill that flags an env-pinned setting next to the input. */
+function EnvBadge({ label }: { label: string }) {
+  return (
+    <span className="mt-1 inline-flex items-center gap-1 rounded bg-stone-100 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-stone-600 dark:bg-stone-700 dark:text-stone-300">
+      <Lock className="h-3 w-3" /> {label}
+    </span>
   );
 }

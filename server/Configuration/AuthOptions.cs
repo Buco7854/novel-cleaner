@@ -1,4 +1,4 @@
-namespace NovelCleaner.Server.Configuration;
+namespace Tergeo.Server.Configuration;
 
 public class AuthOptions
 {
@@ -17,11 +17,11 @@ public class AuthOptions
     /// <summary>
     /// When true (default), every authenticated user is allowed to use the
     /// configured drop folder. When false, only users with the
-    /// <c>BookDrop</c> role (granted by an admin or by OIDC group membership
-    /// — see <see cref="OidcOptions.DropFolderGroups"/>) and admins
-    /// themselves can. Admins always have the permission.
+    /// <c>DropFolder</c> role (granted by an admin or by OIDC group
+    /// membership — see <see cref="OidcOptions.DropFolderGroups"/>) and
+    /// admins themselves can. Admins always have the permission.
     /// </summary>
-    public bool DefaultBookDrop { get; set; } = true;
+    public bool DefaultDropFolder { get; set; } = true;
 }
 
 public class PasswordAuthOptions
@@ -75,10 +75,10 @@ public class OidcOptions
     public List<string> AdminGroups { get; set; } = [];
 
     /// <summary>
-    /// Optional. Groups whose members are granted the <c>BookDrop</c>
+    /// Optional. Groups whose members are granted the <c>DropFolder</c>
     /// permission on login. Only consulted when
-    /// <see cref="AuthOptions.DefaultBookDrop"/> is false. If empty (and
-    /// DefaultBookDrop is false), only admins can use the drop folder.
+    /// <see cref="AuthOptions.DefaultDropFolder"/> is false. If empty (and
+    /// DefaultDropFolder is false), only admins can use the drop folder.
     /// </summary>
     public List<string> DropFolderGroups { get; set; } = [];
 
@@ -122,7 +122,7 @@ public class StorageOptions
     public string UploadDirectory => Path.Combine(BooksDirectory, "uploads");
     public string OutputDirectory => Path.Combine(BooksDirectory, "outputs");
     /// <summary>
-    /// One git repo per book lives under here, named by job id. Backs the
+    /// One git repo per book lives under here, named by book id. Backs the
     /// page editor — file per page, commits as edit history.
     /// </summary>
     public string RepoDirectory   => Path.Combine(BooksDirectory, "repos");

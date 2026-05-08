@@ -37,11 +37,20 @@ export interface OpdsBook {
   languages: string[];
   publisher: string | null;
   issued: string | null;
+  /** Series name from Calibre's `calibre:series` (or schema.org's
+   *  `schema:Series`) when the catalog provides it. */
+  series: string | null;
+  /** Position in the series as a string — Calibre's "1.5" passes through
+   *  verbatim; trailing ".0" is stripped server-side so "3.0" renders "3". */
+  seriesIndex: string | null;
   acquisitionLinks: OpdsLink[];
 }
 
 export interface OpdsFeed {
   title: string | null;
+  /** OPDS search-URL template with a literal `{searchTerms}` placeholder.
+   *  Null when the feed doesn't advertise a search endpoint. */
+  searchTemplate: string | null;
   navigationLinks: OpdsLink[];
   categories: OpdsCategory[];
   books: OpdsBook[];
@@ -70,7 +79,7 @@ export const browseSource = (id: string, url?: string) => {
  * decides whether to also queue the AI cleanup pass.
  */
 export const importEntry = (id: string, href: string, title: string | undefined, mode: OpdsImportMode) =>
-  apiJson<{ novelId: string }>(`/api/opds/sources/${id}/import`, "POST", { href, title, mode });
+  apiJson<{ bookId: string }>(`/api/opds/sources/${id}/import`, "POST", { href, title, mode });
 
 /**
  * Builds a same-origin URL that proxies an OPDS asset (typically a cover
