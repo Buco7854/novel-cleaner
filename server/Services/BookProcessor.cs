@@ -267,6 +267,10 @@ public sealed class BookProcessor(
             // Same lock as `updates` (the worker holds `lock(updates)` across
             // both writes so the two stay consistent without a second lock).
             var proposalsPerDoc = new Dictionary<string, IReadOnlyList<AppliedRemoval>>();
+            // Per-doc count of items the LLM proposed but couldn't be matched
+            // verbatim, captured for the proposals side-car so the file-tree
+            // can flag pages that need a closer look after a partial match.
+            var unmatchedPerDoc = new Dictionary<string, int>();
             var totalRemoved = 0;
             var completed = 0;
             var totalCount = queueWork.Count;
@@ -357,6 +361,7 @@ public sealed class BookProcessor(
                         {
                             updates[work.Doc.Name] = bestBytes;
                             proposalsPerDoc[work.Doc.Name] = bestApplied;
+                            unmatchedPerDoc[work.Doc.Name] = bestRequested - bestApplied.Count;
                         }
                         Interlocked.Add(ref totalRemoved, bestApplied.Count);
                         var unmatched = bestRequested - bestApplied.Count;
@@ -432,20 +437,46 @@ public sealed class BookProcessor(
             // changes — so the user explicitly sees what was just found.
             foreach (var work in queueWork)
             {
-                if (!proposalsPerDoc.TryGetValue(work.Doc.Name, out var applied)) continue;
-                if (applied.Count == 0) continue;
-                if (!updates.TryGetValue(work.Doc.Name, out var bytes)) continue;
+                if (string.IsNullOrEmpty(book.RepoPath)) continue;
 
-                // The cleaned chapter HTML lands directly in the working
-                // tree — same shape the editor stores at upload time.
-                // Pretty-printed so the diff stays readable: same formatting
-                // convention as BookImporter's storage path.
-                var newHtml = EpubHandler.PrettyPrintHtml(bytes);
-                var ok = editorRepo.WritePageByDocName(book.RepoPath!, work.Doc.Name, newHtml);
-                if (!ok)
-                    await logger.LogAsync(bookId, "warn",
-                        $"{work.Doc.Name}: no matching page in editor repo — edit lost",
-                        ct, groupId: work.Doc.Name);
+                if (proposalsPerDoc.TryGetValue(work.Doc.Name, out var applied)
+                    && applied.Count > 0
+                    && updates.TryGetValue(work.Doc.Name, out var bytes))
+                {
+                    // The cleaned chapter HTML lands directly in the working
+                    // tree — same shape the editor stores at upload time.
+                    // Pretty-printed so the diff stays readable: same formatting
+                    // convention as BookImporter's storage path.
+                    var newHtml = EpubHandler.PrettyPrintHtml(bytes);
+                    var pageRel = editorRepo.WritePageByDocName(book.RepoPath, work.Doc.Name, newHtml);
+                    if (pageRel is null)
+                    {
+                        await logger.LogAsync(bookId, "warn",
+                            $"{work.Doc.Name}: no matching page in editor repo — edit lost",
+                            ct, groupId: work.Doc.Name);
+                        continue;
+                    }
+                    // Persist the per-page proposal state so the file-tree
+                    // can drive its cyan / partial badges off live working-
+                    // tree data instead of historical log lines.
+                    var suspicious = applied
+                        .Where(a => !a.IsWatermark)
+                        .Select(a => new SuspiciousProposal(a.Removed, a.Reason))
+                        .ToList();
+                    var partial = unmatchedPerDoc.TryGetValue(work.Doc.Name, out var u) ? u : 0;
+                    editorRepo.SetPageProposals(book.RepoPath, pageRel, suspicious, partial);
+                }
+                else
+                {
+                    // The page was processed but produced no working-tree
+                    // changes (clean run, or every flagged item failed to
+                    // match verbatim). Clear any stale proposals so a
+                    // re-run that lands clean wipes the previous run's
+                    // cyan dot automatically.
+                    var pageRel = editorRepo.FindPagePathByDocName(book.RepoPath, work.Doc.Name);
+                    if (pageRel is not null)
+                        editorRepo.ClearPageProposals(book.RepoPath, pageRel);
+                }
             }
 
             // AI proposals land in the working tree as pending diffs; the

@@ -8,6 +8,14 @@ export interface PageEntry {
   status: PageStatus;
   /** EPUB document name this page mirrors — keyed against worker log groupIds. */
   docName: string | null;
+  /** Pending low-confidence (`watermark: false`) AI removals on this page.
+   *  Drives the cyan dot. Source-of-truth is the proposals side-car in the
+   *  editor repo, maintained by the processor and pruned on accept/reject;
+   *  log lines are no longer involved. */
+  suspicious: number;
+  /** Items the LLM proposed but couldn't be matched verbatim during the
+   *  latest AI run. Drives the partial-match triangle. */
+  partial: number;
 }
 
 export interface PageDetail {

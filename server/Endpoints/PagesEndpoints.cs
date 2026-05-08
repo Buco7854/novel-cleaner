@@ -22,20 +22,29 @@ public static class PagesEndpoints
         var group = app.MapGroup("/api/books/{bookId:guid}/pages").RequireAuthorization();
 
         // Sidebar feed — list every page with a coarse status flag so the UI
-        // can put a dot next to modified ones.
+        // can put a dot next to modified ones. The proposals side-car is
+        // joined in so the file-tree's cyan (suspicious) and partial badges
+        // reflect live working-tree state instead of historical log lines.
         group.MapGet("/", async (Guid bookId, HttpContext http, AppDbContext db, BookEditorRepo editorRepo) =>
         {
             var book = await GetOwnedBookAsync(db, http, bookId);
             if (book is null) return Results.NotFound();
             if (string.IsNullOrEmpty(book.RepoPath))
                 return Results.Ok(Array.Empty<object>());
+            var proposals = editorRepo.ReadProposals(book.RepoPath);
             var pages = editorRepo.ListPages(book.RepoPath)
-                .Select(p => new
+                .Select(p =>
                 {
-                    path = p.Path,
-                    orderIndex = p.OrderIndex,
-                    status = p.Status.ToString(),
-                    docName = p.DocName,
+                    proposals.TryGetValue(p.Path, out var pp);
+                    return new
+                    {
+                        path = p.Path,
+                        orderIndex = p.OrderIndex,
+                        status = p.Status.ToString(),
+                        docName = p.DocName,
+                        suspicious = pp?.Suspicious.Count ?? 0,
+                        partial = pp?.Partial ?? 0,
+                    };
                 });
             return Results.Ok(pages);
         });
@@ -159,6 +168,10 @@ public static class PagesEndpoints
             if (string.IsNullOrEmpty(book.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             editorRepo.WritePage(book.RepoPath, path, dto.Content ?? "");
+            // The user's edit can either restore an AI-flagged deletion
+            // (= reject the suspicious item) or leave it intact. Reprune
+            // so the file-tree's badges follow the post-edit diff.
+            editorRepo.PrunePageProposals(book.RepoPath, path);
             return Results.NoContent();
         });
 
@@ -174,7 +187,11 @@ public static class PagesEndpoints
             if (string.IsNullOrEmpty(book.RepoPath)) return Results.NotFound();
             var msg = string.IsNullOrWhiteSpace(dto.Message) ? "User edit" : dto.Message.Trim();
             var committed = editorRepo.CommitAll(book.RepoPath, msg);
-            if (committed) await finalizer.FinalizeAsync(bookId, ct);
+            if (committed)
+            {
+                editorRepo.ClearAllProposals(book.RepoPath);
+                await finalizer.FinalizeAsync(bookId, ct);
+            }
             return Results.Ok(new { committed });
         });
 
@@ -194,7 +211,11 @@ public static class PagesEndpoints
                 ? $"Accept page {path}"
                 : dto.Message.Trim();
             var committed = editorRepo.CommitPage(book.RepoPath, path, msg);
-            if (committed) await finalizer.FinalizeAsync(bookId, ct);
+            if (committed)
+            {
+                editorRepo.ClearPageProposals(book.RepoPath, path);
+                await finalizer.FinalizeAsync(bookId, ct);
+            }
             return Results.Ok(new { committed });
         });
 
@@ -215,7 +236,11 @@ public static class PagesEndpoints
                 ? $"Accept {dto.Paths.Count} page(s)"
                 : dto.Message.Trim();
             var committed = editorRepo.CommitMany(book.RepoPath, dto.Paths, msg);
-            if (committed) await finalizer.FinalizeAsync(bookId, ct);
+            if (committed)
+            {
+                editorRepo.ClearProposals(book.RepoPath, dto.Paths);
+                await finalizer.FinalizeAsync(bookId, ct);
+            }
             return Results.Ok(new { committed });
         });
 
@@ -233,6 +258,7 @@ public static class PagesEndpoints
             foreach (var p in dto.Paths)
                 if (!IsSafeRelPath(p)) return Results.BadRequest(new { error = $"invalid path: {p}" });
             editorRepo.DiscardMany(book.RepoPath, dto.Paths);
+            editorRepo.ClearProposals(book.RepoPath, dto.Paths);
             return Results.NoContent();
         });
 
@@ -247,6 +273,7 @@ public static class PagesEndpoints
             if (string.IsNullOrEmpty(book.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             editorRepo.DiscardPage(book.RepoPath, path);
+            editorRepo.ClearPageProposals(book.RepoPath, path);
             return Results.NoContent();
         });
 
@@ -263,6 +290,10 @@ public static class PagesEndpoints
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             var ok = editorRepo.RejectHunk(book.RepoPath, path, index);
             if (!ok) return Results.BadRequest(new { error = "hunk index out of range or no diff for path" });
+            // The rejected hunk's deletion is no longer pending — re-prune
+            // so any suspicious needle that hunk carried disappears from
+            // the side-car.
+            editorRepo.PrunePageProposals(book.RepoPath, path);
             return Results.NoContent();
         });
 
@@ -280,6 +311,10 @@ public static class PagesEndpoints
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             var ok = editorRepo.AcceptHunk(book.RepoPath, path, index, $"Accept hunk {index} on {path}");
             if (!ok) return Results.BadRequest(new { error = "hunk index out of range or no diff for path" });
+            // The accepted hunk's deletion is now committed — re-prune
+            // so the corresponding suspicious needle leaves the side-car
+            // (its decision is settled).
+            editorRepo.PrunePageProposals(book.RepoPath, path);
             await finalizer.FinalizeAsync(bookId, ct);
             return Results.NoContent();
         });
@@ -336,6 +371,10 @@ public static class PagesEndpoints
             if (!IsSafeSha(sha)) return Results.BadRequest(new { error = "invalid sha" });
             var ok = editorRepo.RestorePageToCommit(book.RepoPath, path, sha);
             if (!ok) return Results.BadRequest(new { error = "unknown sha or path missing at that revision" });
+            // The working tree just got rewritten — recompute proposals
+            // against the new diff so any badges align with what's
+            // actually pending.
+            editorRepo.PrunePageProposals(book.RepoPath, path);
             return Results.NoContent();
         });
 

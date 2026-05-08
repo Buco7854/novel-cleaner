@@ -484,39 +484,28 @@ export function EditorPage() {
     if (path) setSelected(path);
   }
 
-  // ---- Partial-run flagging -------------------------------------------
-  // Pages whose last AI pass produced unmatched items (level="partial") —
-  // the LLM proposed removals but the verbatim match failed for some.
-  // Surface this as an amber badge in the file tree + a banner inside the
-  // page editor so the user knows to double-check manually.
+  // ---- Per-page AI-proposal badges -------------------------------------
+  // Built from pages.data (proposals side-car in the editor repo), not
+  // from log lines — logs are pure observability and shouldn't influence
+  // UI state. The side-car is maintained by the processor at run
+  // completion and pruned by the accept/reject endpoints, so these maps
+  // reflect actual pending review state by construction.
   const partialByPage = useMemo(() => {
     const out = new Map<string, number>();
-    for (const l of logs) {
-      if (l.level !== "partial" || !l.groupId) continue;
-      const path = docToPage.get(l.groupId);
-      if (!path) continue;
-      // Pull the "{n} unmatched" number out of the worker's message format.
-      // Falls back to 0 when format drifts — the warning still shows.
-      const m = /(\d+)\s+unmatched/.exec(l.message);
-      out.set(path, m ? parseInt(m[1], 10) : 0);
+    for (const p of pages.data ?? []) {
+      if (p.partial > 0) out.set(p.path, p.partial);
     }
     return out;
-  }, [logs, docToPage]);
-  // ---- Low-confidence flagging ----------------------------------------
-  // Pages whose last AI pass landed at least one item the LLM marked
-  // `watermark: false` (level="suspicious"). Drives the cyan dot in the
-  // file tree so the user knows which pages need a closer look.
+  }, [pages.data]);
+  // Low-confidence (`watermark: false`) items still pending review,
+  // sourced the same way as partialByPage.
   const suspiciousByPage = useMemo(() => {
     const out = new Map<string, number>();
-    for (const l of logs) {
-      if (l.level !== "suspicious" || !l.groupId) continue;
-      const path = docToPage.get(l.groupId);
-      if (!path) continue;
-      const m = /(\d+)\s+suspicious/.exec(l.message);
-      out.set(path, m ? parseInt(m[1], 10) : 0);
+    for (const p of pages.data ?? []) {
+      if (p.suspicious > 0) out.set(p.path, p.suspicious);
     }
     return out;
-  }, [logs, docToPage]);
+  }, [pages.data]);
   const isInflight = status === "Running" || status === "Queued" || status === "Paused";
   const showProgress = (status === "Running" || status === "Paused") && total !== null && total > 0;
 
@@ -967,9 +956,14 @@ function FileTree({
                       aria-label={`select ${name}`}
                     />
                     {/* Suspicious wins over plain "modified" because it
-                        carries strictly more information — the page is dirty
-                        AND the LLM marked at least one item low-confidence,
-                        which is what the user actually needs to triage. */}
+                        carries strictly more information — there's a
+                        pending low-confidence hunk for the user to
+                        triage. The proposals side-car keeps this in
+                        sync with actual pending state, so once every
+                        suspicious hunk is accepted or rejected the
+                        entry drops and the dot reverts to amber (still
+                        dirty for high-confidence hunks) or clears
+                        (page settled clean). */}
                     <span
                       className={clsx(
                         "h-1.5 w-1.5 shrink-0 rounded-full",

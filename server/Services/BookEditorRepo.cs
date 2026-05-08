@@ -1,5 +1,7 @@
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Tergeo.Server.Configuration;
 using Tergeo.Server.Models;
@@ -42,6 +44,20 @@ public sealed record PageRevision(
     string Message,
     DateTimeOffset Timestamp,
     string AuthorName);
+
+/// <summary>One low-confidence removal proposed by the LLM that's still
+/// pending in the working tree (not yet accepted or rejected). Stored in
+/// the proposals side-car so the file-tree's cyan dot reflects actual
+/// pending review state instead of historical log lines.</summary>
+public sealed record SuspiciousProposal(string Removed, string Reason);
+
+/// <summary>Per-page AI-proposal state: which low-confidence removals are
+/// still untriaged, plus the count of items the LLM emitted that couldn't
+/// be matched verbatim. Driven by <see cref="BookProcessor"/> at run
+/// completion and pruned by accept/reject endpoints.</summary>
+public sealed record PageProposals(
+    IReadOnlyList<SuspiciousProposal> Suspicious,
+    int Partial);
 
 /// <summary>
 /// Wraps LibGit2Sharp behind the editor's mental model: one git repository
@@ -366,24 +382,42 @@ public sealed class BookEditorRepo(IOptions<StorageOptions> storage, ILogger<Boo
     }
 
     /// <summary>
-    /// Locates the page that mirrors a given EPUB document (by side-car
-    /// match) and writes <paramref name="content"/> to its working-tree
-    /// file. The worker uses this to land its post-LLM output on the right
-    /// page without having to track index↔name mapping itself.
+    /// Locates the page that mirrors <paramref name="documentName"/> by
+    /// scanning the side-car files. Returns the repo-relative page path
+    /// (e.g. <c>pages/0042_chapter.txt</c>) or null when no page maps
+    /// to that EPUB document.
     /// </summary>
-    public bool WritePageByDocName(string repoPath, string documentName, string content)
+    public string? FindPagePathByDocName(string repoPath, string documentName)
     {
         var pagesDir = Path.Combine(repoPath, "pages");
-        if (!Directory.Exists(pagesDir)) return false;
+        if (!Directory.Exists(pagesDir)) return null;
         foreach (var src in Directory.EnumerateFiles(pagesDir, "*.source"))
         {
             var name = File.ReadAllText(src, Encoding.UTF8);
             if (!string.Equals(name, documentName, StringComparison.Ordinal)) continue;
             var pageDisk = src[..^".source".Length];
-            File.WriteAllText(pageDisk, content, Encoding.UTF8);
-            return true;
+            // Convert absolute disk path back to repo-relative with forward
+            // slashes — every other API in this class speaks that dialect.
+            var rel = Path.GetRelativePath(repoPath, pageDisk).Replace('\\', '/');
+            return rel;
         }
-        return false;
+        return null;
+    }
+
+    /// <summary>
+    /// Locates the page that mirrors a given EPUB document (by side-car
+    /// match) and writes <paramref name="content"/> to its working-tree
+    /// file. Returns the repo-relative page path on success (so the caller
+    /// can update proposal metadata for that page) or null when no page
+    /// maps to the document.
+    /// </summary>
+    public string? WritePageByDocName(string repoPath, string documentName, string content)
+    {
+        var rel = FindPagePathByDocName(repoPath, documentName);
+        if (rel is null) return null;
+        var pageDisk = Path.Combine(repoPath, rel);
+        File.WriteAllText(pageDisk, content, Encoding.UTF8);
+        return rel;
     }
 
     /// <summary>
@@ -523,6 +557,216 @@ public sealed class BookEditorRepo(IOptions<StorageOptions> storage, ILogger<Boo
         repo.Refs.UpdateTarget(headRef, commit.Sha);
         return true;
     }
+
+    // ---- Proposal side-car -------------------------------------------
+    // AI proposals carry per-hunk metadata (suspicious / partial) that the
+    // git history alone can't represent — git only tracks "what changed",
+    // not "how confident the LLM was about each change". We persist this
+    // out-of-band as <repo>/.git/proposals.json: the .git folder is
+    // private to libgit2, files we drop in there never get staged or
+    // committed, and they survive across server restarts (unlike an
+    // in-memory cache).
+    //
+    // Source-of-truth contract:
+    // - BookProcessor writes a fresh entry per page touched by an AI run.
+    //   Pages that came out clean get their entry deleted, so a clean
+    //   re-run automatically clears stale state.
+    // - Accept/reject endpoints call PrunePageProposals, which compares
+    //   the post-op diff to the recorded suspicious needles and drops
+    //   entries whose deletion is no longer pending (resolved by the
+    //   user's action either way).
+    // - Whole-page commit / discard endpoints call ClearPageProposals
+    //   directly because the page is unambiguously clean afterward.
+    //
+    // The frontend reads suspicious / partial counts straight off
+    // PageEntry; the file-tree's cyan dot follows pending review state
+    // by construction instead of being inferred from the log stream.
+
+    private static readonly ConcurrentDictionary<string, object> _proposalsLocks = new();
+    private static readonly JsonSerializerOptions ProposalsJsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = false,
+    };
+
+    private static string ProposalsPath(string repoPath) =>
+        Path.Combine(repoPath, ".git", "proposals.json");
+
+    private static object LockFor(string repoPath) =>
+        _proposalsLocks.GetOrAdd(repoPath, _ => new object());
+
+    /// <summary>
+    /// Reads the entire proposals side-car. Returns an empty dict when the
+    /// file is absent or corrupt — proposals are advisory, never load-bearing,
+    /// so a parse failure shouldn't crash the editor.
+    /// </summary>
+    public IReadOnlyDictionary<string, PageProposals> ReadProposals(string repoPath)
+    {
+        var path = ProposalsPath(repoPath);
+        if (!File.Exists(path)) return new Dictionary<string, PageProposals>();
+        lock (LockFor(repoPath))
+        {
+            try
+            {
+                var json = File.ReadAllText(path, Encoding.UTF8);
+                return JsonSerializer.Deserialize<Dictionary<string, PageProposals>>(json, ProposalsJsonOpts)
+                       ?? new Dictionary<string, PageProposals>();
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "Failed to read proposals side-car at {Path} — treating as empty", path);
+                return new Dictionary<string, PageProposals>();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Records (or overwrites) the proposal state for a single page. Empty
+    /// entries (no suspicious + no partial) are dropped from the side-car
+    /// so a clean run leaves the file as small as possible.
+    /// </summary>
+    public void SetPageProposals(
+        string repoPath, string relPath,
+        IReadOnlyList<SuspiciousProposal> suspicious, int partial)
+    {
+        lock (LockFor(repoPath))
+        {
+            var data = ReadProposalsLocked(repoPath);
+            if (suspicious.Count == 0 && partial == 0)
+                data.Remove(relPath);
+            else
+                data[relPath] = new PageProposals(suspicious, partial);
+            WriteProposalsLocked(repoPath, data);
+        }
+    }
+
+    /// <summary>Drops the proposal entry for a single page. Used after
+    /// whole-page commit/discard, where the page is unambiguously clean
+    /// post-op so any pending proposals are moot.</summary>
+    public void ClearPageProposals(string repoPath, string relPath)
+    {
+        lock (LockFor(repoPath))
+        {
+            var data = ReadProposalsLocked(repoPath);
+            if (data.Remove(relPath))
+                WriteProposalsLocked(repoPath, data);
+        }
+    }
+
+    /// <summary>Drops proposal entries for multiple pages — batch
+    /// counterpart to <see cref="ClearPageProposals"/>, used by
+    /// commit-many / discard-many.</summary>
+    public void ClearProposals(string repoPath, IEnumerable<string> relPaths)
+    {
+        lock (LockFor(repoPath))
+        {
+            var data = ReadProposalsLocked(repoPath);
+            var changed = false;
+            foreach (var rp in relPaths)
+                if (data.Remove(rp)) changed = true;
+            if (changed) WriteProposalsLocked(repoPath, data);
+        }
+    }
+
+    /// <summary>Wipes the entire proposals side-car. Used by
+    /// commit-all — every page settles to clean.</summary>
+    public void ClearAllProposals(string repoPath)
+    {
+        lock (LockFor(repoPath))
+        {
+            var path = ProposalsPath(repoPath);
+            if (File.Exists(path)) File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// Re-evaluates a page's proposals against its current state. Drops
+    /// suspicious needles whose deletion is no longer pending in the diff
+    /// (the user accepted or rejected them via accept-hunk / reject-hunk
+    /// or by editing the page directly). Clears the entry entirely when
+    /// the page has settled to clean. Partial count is left alone — it
+    /// describes the original AI run and only AI re-runs overwrite it.
+    /// </summary>
+    public void PrunePageProposals(string repoPath, string relPath)
+    {
+        lock (LockFor(repoPath))
+        {
+            var data = ReadProposalsLocked(repoPath);
+            if (!data.TryGetValue(relPath, out var entry)) return;
+
+            var page = ReadPage(repoPath, relPath);
+            if (page.Status == PageStatus.Clean)
+            {
+                data.Remove(relPath);
+                WriteProposalsLocked(repoPath, data);
+                return;
+            }
+
+            var deletions = ExtractDeletionsFromDiff(page.DiffAgainstHead);
+            var stillPending = entry.Suspicious
+                .Where(s => deletions.Contains(s.Removed))
+                .ToList();
+
+            var next = new PageProposals(stillPending, entry.Partial);
+            if (next.Suspicious.Count == 0 && next.Partial == 0)
+                data.Remove(relPath);
+            else
+                data[relPath] = next;
+            WriteProposalsLocked(repoPath, data);
+        }
+    }
+
+    private Dictionary<string, PageProposals> ReadProposalsLocked(string repoPath)
+    {
+        var path = ProposalsPath(repoPath);
+        if (!File.Exists(path)) return new Dictionary<string, PageProposals>();
+        try
+        {
+            var json = File.ReadAllText(path, Encoding.UTF8);
+            return JsonSerializer.Deserialize<Dictionary<string, PageProposals>>(json, ProposalsJsonOpts)
+                   ?? new Dictionary<string, PageProposals>();
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Failed to read proposals side-car at {Path} — treating as empty", path);
+            return new Dictionary<string, PageProposals>();
+        }
+    }
+
+    private static void WriteProposalsLocked(string repoPath, Dictionary<string, PageProposals> data)
+    {
+        var path = ProposalsPath(repoPath);
+        if (data.Count == 0)
+        {
+            if (File.Exists(path)) File.Delete(path);
+            return;
+        }
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        var json = JsonSerializer.Serialize(data, ProposalsJsonOpts);
+        File.WriteAllText(path, json, Encoding.UTF8);
+    }
+
+    /// <summary>
+    /// Concatenates every '-' line in <paramref name="diff"/> (skipping the
+    /// '---' file header) so the caller can cheaply check needle presence
+    /// with a single Contains. Newlines between deleted lines are
+    /// preserved so multi-paragraph needles still match.
+    /// </summary>
+    private static string ExtractDeletionsFromDiff(string? diff)
+    {
+        if (string.IsNullOrEmpty(diff)) return "";
+        var sb = new StringBuilder();
+        foreach (var line in diff.Split('\n'))
+        {
+            if (line.Length == 0 || line[0] != '-') continue;
+            if (line.StartsWith("---", StringComparison.Ordinal)) continue;
+            sb.Append(line, 1, line.Length - 1);
+            sb.Append('\n');
+        }
+        return sb.ToString();
+    }
+
+    // ---- Diff parsing (used by accept-hunk / reject-hunk below) ------
 
     private static readonly Regex HunkHeader = new(
         @"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@",
