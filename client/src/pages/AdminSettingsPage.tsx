@@ -125,7 +125,10 @@ export function AdminSettingsPage() {
               disabled={lock("model")}
               value={form.model} onChange={(e) => update("model", e.target.value)} />
           </Field>
-          <Field label={t("settings.scanning.parallelRequests")} hint={envHint("maxWorkers")}>
+          <Field
+            label={t("settings.scanning.parallelRequests")}
+            hint={envHint("maxWorkers") ?? t("settings.scanning.parallelRequestsHint")}
+          >
             <input className="input" type="number" min={1} max={10} step={1}
               disabled={lock("maxWorkers")}
               value={form.maxWorkers}

@@ -215,7 +215,6 @@ public static class OpdsEndpoints
                 Description = meta.Description,
                 Status = mode == OpdsImportMode.AddAndRunAi ? BookStatus.Queued : BookStatus.Idle,
                 // Admin-managed
-                MaxWorkers = appS.MaxWorkers,
                 Model = appS.Model,
             };
             db.Books.Add(book);

@@ -63,7 +63,6 @@ export interface BookDetail {
   description: string | null;
   status: BookStatus;
   model: string;
-  maxWorkers: number;
   removed: number;
   error: string | null;
   createdAt: string;

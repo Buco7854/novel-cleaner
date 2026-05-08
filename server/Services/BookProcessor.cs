@@ -52,17 +52,35 @@ public sealed class BookProcessor(
                 log.LogInformation("Re-enqueued {N} active book(s) from a prior run", resumeIds.Count);
         }
 
+        // Run books in parallel. The global LlmConcurrencyGate caps in-flight
+        // LLM calls across the whole app, so spawning per-book tasks here
+        // doesn't blow up the LLM workload — it just lets a second book
+        // start filling spare gate slots while the first is still finishing.
+        var inflight = new List<Task>();
         await foreach (var id in queue.ReadAllAsync(stoppingToken))
         {
-            try
+            // Drop completed tasks so the list doesn't grow unboundedly.
+            inflight.RemoveAll(t => t.IsCompleted);
+
+            var t = Task.Run(async () =>
             {
-                await RunOneAsync(id, stoppingToken);
-            }
-            catch (Exception ex)
-            {
-                log.LogError(ex, "Book {BookId} crashed", id);
-            }
+                try
+                {
+                    await RunOneAsync(id, stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    log.LogError(ex, "Book {BookId} crashed", id);
+                }
+            }, stoppingToken);
+            inflight.Add(t);
         }
+
+        // Drain remaining runs on shutdown. Exceptions are already swallowed
+        // inside the per-book wrapper above; WhenAll just waits for the
+        // tasks to settle.
+        try { await Task.WhenAll(inflight); }
+        catch { /* swallowed per-task above */ }
     }
 
     private async Task RunOneAsync(Guid bookId, CancellationToken stoppingToken)
@@ -77,6 +95,7 @@ public sealed class BookProcessor(
         var auth = sp.GetRequiredService<IOptionsMonitor<AuthOptions>>();
         var editorRepo = sp.GetRequiredService<BookEditorRepo>();
         var cancelRegistry = sp.GetRequiredService<BookCancellationRegistry>();
+        var gate = sp.GetRequiredService<LlmConcurrencyGate>();
 
         var book = await db.Books.Include(n => n.User)
             .FirstOrDefaultAsync(n => n.Id == bookId, stoppingToken);
@@ -94,7 +113,7 @@ public sealed class BookProcessor(
         var ct = runCts.Token;
         try
         {
-            await RunInnerAsync(bookId, book, db, logger, openai, users, auth, editorRepo, settings, ct);
+            await RunInnerAsync(bookId, book, db, logger, openai, users, auth, editorRepo, settings, gate, ct);
         }
         finally
         {
@@ -107,6 +126,7 @@ public sealed class BookProcessor(
         OpenAiClient openai, UserManager<AppUser> users,
         IOptionsMonitor<AuthOptions> auth, BookEditorRepo editorRepo,
         AppSettingsResolver settings,
+        LlmConcurrencyGate gate,
         CancellationToken ct)
     {
 
@@ -251,8 +271,9 @@ public sealed class BookProcessor(
             var completed = 0;
             var totalCount = queueWork.Count;
 
-            using var sem = new SemaphoreSlim(Math.Max(1, book.MaxWorkers));
-
+            // Global gate — every chapter task across every running book
+            // competes for the same fixed pool of slots, so adding more
+            // concurrent books doesn't multiply LLM concurrency.
             var tasks = queueWork.Select(async work =>
             {
                 // Group key for every log line emitted on behalf of this
@@ -260,7 +281,7 @@ public sealed class BookProcessor(
                 // ✓/✗ items together even when other docs interleave in time.
                 var group = work.Doc.Name;
 
-                await sem.WaitAsync(ct);
+                await gate.WaitAsync(ct);
                 try
                 {
                     // Honor pause requests — checked between excerpt tasks so
@@ -391,7 +412,7 @@ public sealed class BookProcessor(
                 }
                 finally
                 {
-                    sem.Release();
+                    gate.Release();
                     var done = Interlocked.Increment(ref completed);
                     var pct = (int)(done * 90.0 / totalCount);
                     await logger.UpdateStatusAsync(bookId, BookStatus.Running, pct, done, totalCount, ct);

@@ -120,7 +120,6 @@ public static class BookActionsEndpoints
                 Publisher   = meta.Publisher,
                 Description = meta.Description,
                 Status = BookStatus.Idle,
-                MaxWorkers = appS.MaxWorkers,
                 Model = appS.Model,
             };
             db.Books.Add(clone);
