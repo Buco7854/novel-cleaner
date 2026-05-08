@@ -108,7 +108,6 @@ public static class BooksEndpoints
                 description = book.Description,
                 status = status.ToString(),
                 model = book.Model,
-                maxWorkers = book.MaxWorkers,
                 removed = book.RemovedCount,
                 error = book.ErrorMessage,
                 createdAt = book.CreatedAt,
@@ -230,7 +229,6 @@ public static class BooksEndpoints
                     // the user kicks off processing from the toolbar.
                     Status = BookStatus.Idle,
                     // Admin-managed (AppSettings)
-                    MaxWorkers = appS.MaxWorkers,
                     Model = appS.Model,
                 };
                 db.Books.Add(book);

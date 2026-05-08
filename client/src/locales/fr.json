@@ -219,6 +219,7 @@
       "contextWindow": "Fenêtre de contexte (caractères)",
       "contextWindowHint": "S'applique uniquement en mode Motif — caractères de contexte conservés autour de chaque correspondance. Ignoré en mode page entière (la page entière est envoyée).",
       "parallelRequests": "Requêtes LLM parallèles",
+      "parallelRequestsHint": "Plafond global d'appels LLM simultanés, tous livres confondus. Les livres partagent le même pool : deux livres en cours d'exécution se disputent les mêmes créneaux — c'est un total en vol, pas par livre. Les changements s'appliquent immédiatement.",
       "reviewBeforeApplying": "Vérifier avant d'appliquer",
       "reviewBeforeApplyingLabel": "Faire une pause pour vérification après le passage du LLM",
       "reviewBeforeApplyingHint": "Lorsque activé, l'EPUB nettoyé n'est pas écrit tant que vous n'avez pas accepté ou rejeté chaque suppression proposée. Le fichier original n'est jamais modifié pendant la vérification."

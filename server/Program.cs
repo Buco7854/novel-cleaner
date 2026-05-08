@@ -237,6 +237,16 @@ builder.Services.AddAuthorization();
 // ----- App services -----------------------------------------------------
 builder.Services.AddSingleton<BookProcessingQueue>();
 builder.Services.AddSingleton<BookCancellationRegistry>();
+// Singleton LLM concurrency gate. Reads MaxWorkers once on first resolve
+// (eagerly triggered at startup, see below) so every chapter task across
+// every running book competes for the same fixed pool.
+builder.Services.AddSingleton<LlmConcurrencyGate>(sp =>
+{
+    using var scope = sp.CreateScope();
+    var resolver = scope.ServiceProvider.GetRequiredService<AppSettingsResolver>();
+    var settings = resolver.ResolveAsync().GetAwaiter().GetResult();
+    return new LlmConcurrencyGate(settings.MaxWorkers);
+});
 builder.Services.AddScoped<UserProvisioningService>();
 builder.Services.AddScoped<AppSettingsResolver>();
 builder.Services.AddScoped<BookEventLogger>();
@@ -286,6 +296,11 @@ await using (var scope = app.Services.CreateAsyncScope())
     {
         await SeedData.EnsureFirstAdminAsync(scope.ServiceProvider, auth);
     }
+
+    // Eagerly resolve the global LLM concurrency gate so its MaxWorkers
+    // value is read once at startup (rather than lazily on first AI run).
+    // Changes to MaxWorkers in the admin UI take effect on next restart.
+    _ = scope.ServiceProvider.GetRequiredService<LlmConcurrencyGate>();
 }
 
 // MUST be first — runs before authentication so OIDC sees the correct scheme.

@@ -45,7 +45,6 @@ public class Book
     public string? Description { get; set; }
 
     public BookStatus Status { get; set; } = BookStatus.Queued;
-    public int MaxWorkers { get; set; } = 3;
     public string Model { get; set; } = "";
 
     public int RemovedCount { get; set; }
