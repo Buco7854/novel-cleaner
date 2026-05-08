@@ -1,44 +1,33 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Auto-invert in dark tabs / dark Safari pinned tabs. The default ink is
-       a near-black stone tone that reads on cream / white tab chrome; the
-       prefers-color-scheme=dark override flips it to a near-white so the
-       icon stays visible on dark Chrome / Firefox tabs. -->
-  <style>
-    .ink   { fill: #1c1917; }
-    .accent{ fill: #d97706; }
-    @media (prefers-color-scheme: dark) {
-      .ink   { fill: #fafaf9; }
-      .accent{ fill: #fbbf24; }
-    }
-  </style>
+  <!-- Self-contained badge: amber background carries its own contrast so the
+       icon reads on both light and dark tab chrome without relying on
+       prefers-color-scheme (which misfires when the OS is dark-mode but the
+       tab chrome is light, leaving the old silhouette invisible). -->
+  <rect width="64" height="64" rx="12" ry="12" fill="#d97706"/>
 
-  <!-- Open book seen face-on, two pages meeting at the spine. Drawn as a
-       single pair of mirrored quad-curves for cheap-but-readable shape at
-       16 px favicon scale. -->
-  <path class="ink"
-        d="M6 18
-           C 14 14, 24 14, 32 22
-           V 56
-           C 24 48, 14 48, 6 52
+  <!-- Open book seen face-on, two pages meeting at the spine. -->
+  <path fill="#fafaf9"
+        d="M8 20
+           C 16 16, 26 16, 32 23
+           V 54
+           C 26 48, 16 48, 8 52
            Z"/>
-  <path class="ink"
-        d="M58 18
-           C 50 14, 40 14, 32 22
-           V 56
-           C 40 48, 50 48, 58 52
+  <path fill="#fafaf9"
+        d="M56 20
+           C 48 16, 38 16, 32 23
+           V 54
+           C 38 48, 48 48, 56 52
            Z"/>
 
-  <!-- Four-point "scouring sparkle" in the upper-right, signalling the
-       cleanup motion — Tergeo is the scouring charm. Placed off-axis
-       so the book and sparkle don't collide visually. -->
-  <path class="accent"
-        d="M50 6
-           L 53 13
-           L 60 16
-           L 53 19
-           L 50 26
-           L 47 19
-           L 40 16
-           L 47 13
+  <!-- Four-point "scouring sparkle" — Tergeo is the scouring charm. -->
+  <path fill="#fef3c7"
+        d="M48 6
+           L 50.5 11.5
+           L 56 14
+           L 50.5 16.5
+           L 48 22
+           L 45.5 16.5
+           L 40 14
+           L 45.5 11.5
            Z"/>
 </svg>
