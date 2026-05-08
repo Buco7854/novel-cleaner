@@ -70,8 +70,8 @@ export interface NovelDetail {
   startedAt: string | null;
   completedAt: string | null;
   hasOutput: boolean;
-  /** True when an admin has set a drop folder. The actual BookDrop permission
-   *  is checked server-side at POST /drop time. */
+  /** True when an admin has set a drop folder. The actual drop-folder
+   *  permission is checked server-side at POST /drop time. */
   dropConfigured: boolean;
   /** Per-novel AI instructions appended last in the prompt stack
    *  (admin → user → novel). */

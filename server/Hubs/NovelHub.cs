@@ -7,8 +7,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace NovelCleaner.Server.Hubs;
 
+/// <summary>
+/// SignalR hub for live novel updates — log lines and status transitions
+/// emitted by <see cref="Services.NovelProcessor"/> and the various endpoints.
+/// Clients subscribe per novel id; the server pushes events into the matching
+/// group as work progresses.
+/// </summary>
 [Authorize]
-public class JobHub(AppDbContext db) : Hub
+public class NovelHub(AppDbContext db) : Hub
 {
     public async Task SubscribeNovel(string novelId)
     {
@@ -36,9 +42,9 @@ public class JobHub(AppDbContext db) : Hub
         var sub = principal.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(sub, out var userId)) return false;
 
-        return await db.CleanJobs
+        return await db.Novels
             .AsNoTracking()
-            .AnyAsync(j => j.Id == novelId && j.UserId == userId);
+            .AnyAsync(n => n.Id == novelId && n.UserId == userId);
     }
 
     public static string GroupForNovel(Guid id) => $"novel:{id}";

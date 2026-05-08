@@ -9,10 +9,10 @@ using Microsoft.Extensions.Options;
 namespace NovelCleaner.Server.Services;
 
 /// <summary>
-/// Status of one page (file) inside a book repo, mirroring git's working-tree
-/// view: <c>Clean</c> = no diff vs HEAD, <c>Modified</c> = unstaged changes,
-/// <c>Staged</c> = staged but not committed (we don't currently use the
-/// index, but we surface it for completeness).
+/// Status of one page (file) inside a novel's editor repo, mirroring git's
+/// working-tree view: <c>Clean</c> = no diff vs HEAD, <c>Modified</c> =
+/// unstaged changes, <c>Staged</c> = staged but not committed (we don't
+/// currently use the index, but we surface it for completeness).
 /// </summary>
 public enum PageStatus { Clean, Modified, Staged }
 
@@ -45,36 +45,36 @@ public sealed record PageRevision(
 
 /// <summary>
 /// Wraps LibGit2Sharp behind the editor's mental model: one git repository
-/// per <see cref="CleanJob"/>, one file per page (visible-text projection of
+/// per <see cref="Novel"/>, one file per page (visible-text projection of
 /// the chapter), commits as edit history. The initial commit holds the
 /// untouched extraction so every subsequent diff is "what changed since the
 /// raw EPUB". User edits and AI-run output both write to the working tree;
 /// accept-hunk = stage+commit, reject-hunk = checkout-the-hunk.
 ///
 /// Author identity is fixed (the app, not the user) — the user is
-/// represented by the <c>CleanJob.UserId</c> at the API boundary, not in git
+/// represented by the <c>Novel.UserId</c> at the API boundary, not in git
 /// metadata.
 /// </summary>
-public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo> log)
+public sealed class NovelEditorRepo(IOptions<StorageOptions> storage, ILogger<NovelEditorRepo> log)
 {
     private readonly StorageOptions _storage = storage.Value;
     private static readonly Signature AppSig = new(
         "Novel Cleaner", "novel-cleaner@local", DateTimeOffset.UtcNow);
 
-    /// <summary>Resolves the on-disk path for a job's repo. Stable per job id.</summary>
-    public string PathFor(Guid jobId) =>
-        Path.Combine(_storage.RepoDirectory, jobId.ToString("N"));
+    /// <summary>Resolves the on-disk path for a novel's repo. Stable per novel id.</summary>
+    public string PathFor(Guid novelId) =>
+        Path.Combine(_storage.RepoDirectory, novelId.ToString("N"));
 
     /// <summary>
-    /// Initializes a fresh repo for <paramref name="jobId"/>, writes one
+    /// Initializes a fresh repo for <paramref name="novelId"/>, writes one
     /// <c>pages/{NNNN}_{safeName}.txt</c> per visible-text page, and seals
     /// the initial commit. Returns the repo path so the caller can persist
-    /// it on the <see cref="CleanJob"/>. Idempotent: re-init on an existing
+    /// it on the <see cref="Novel"/>. Idempotent: re-init on an existing
     /// path returns the existing path without rewriting.
     /// </summary>
-    public string InitFromPages(Guid jobId, IReadOnlyList<(string DocumentName, string VisibleText)> pages)
+    public string InitFromPages(Guid novelId, IReadOnlyList<(string DocumentName, string VisibleText)> pages)
     {
-        var path = PathFor(jobId);
+        var path = PathFor(novelId);
         if (Directory.Exists(Path.Combine(path, ".git"))) return path;
 
         Directory.CreateDirectory(path);
@@ -98,7 +98,7 @@ public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo>
         Commands.Stage(repo, "*");
         repo.Commit("Initial extraction", AppSig, AppSig,
             new CommitOptions { AllowEmptyCommit = true });
-        log.LogInformation("Initialized book repo for job {JobId} with {N} page(s)", jobId, pages.Count);
+        log.LogInformation("Initialized editor repo for novel {NovelId} with {N} page(s)", novelId, pages.Count);
         return path;
     }
 
@@ -328,7 +328,7 @@ public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo>
     /// <summary>
     /// Reads a page's content as it stands in the HEAD commit. Used by
     /// finalize, which must export based on the *committed* state of the
-    /// book — not whatever is in the working tree.
+    /// novel — not whatever is in the working tree.
     /// </summary>
     public string ReadHeadContent(string repoPath, string relPath)
     {
@@ -356,7 +356,7 @@ public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo>
     /// <summary>
     /// Reads the side-car that records which EPUB zip-entry a page came from,
     /// so finalize can write the cleaned bytes back to the right archive
-    /// member. Returns null when the side-car is missing (jobs created
+    /// member. Returns null when the side-car is missing (novels created
     /// before this layout, or a hand-edited repo).
     /// </summary>
     public string? ReadDocName(string repoPath, string relPath)
@@ -389,8 +389,8 @@ public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo>
     /// <summary>
     /// True when the working tree (or index) differs from HEAD — i.e. there
     /// are pending edits the user hasn't accepted yet. Drives the UI's
-    /// "awaiting review" indicator: a job with uncommitted page changes is
-    /// awaiting review, period, regardless of whether the AI just ran.
+    /// "awaiting review" indicator: a novel with uncommitted page changes
+    /// is awaiting review, period, regardless of whether the AI just ran.
     /// </summary>
     public bool HasUncommittedChanges(string repoPath)
     {
@@ -404,10 +404,10 @@ public sealed class BookRepo(IOptions<StorageOptions> storage, ILogger<BookRepo>
     }
 
     /// <summary>
-    /// True when HEAD diverges from the initial commit (= the book has been
+    /// True when HEAD diverges from the initial commit (= the novel has been
     /// edited since extraction). Used by the worker to decide whether a
-    /// "found nothing" rerun should keep the job in AwaitingReview or settle
-    /// back to Completed.
+    /// "found nothing" rerun should keep the novel in AwaitingReview or
+    /// settle back to Completed.
     /// </summary>
     public bool HasEditsAgainstInitial(string repoPath)
     {

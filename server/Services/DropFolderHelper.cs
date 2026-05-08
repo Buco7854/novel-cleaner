@@ -6,42 +6,46 @@ namespace NovelCleaner.Server.Services;
 
 public sealed record DropResult(string DestinationPath);
 
+/// <summary>
+/// Copies cleaned EPUB output into the admin-configured drop folder. Both
+/// the auto path (worker post-clean, finalize-after-review) and the manual
+/// re-trigger button on the editor route through here so the on-disk
+/// behavior and log lines stay identical.
+/// </summary>
 public static class DropFolderHelper
 {
     /// <summary>
-    /// Copies a finished job's output into the configured drop folder, after
-    /// confirming a folder is configured AND the job's owner holds the
-    /// BookDrop permission. Used by both the worker (post-clean) and the
-    /// finalize endpoint (post-review) so they emit identical log lines and
-    /// honor the same gate.
+    /// Copies a finished novel's output into the configured drop folder,
+    /// after confirming a folder is configured AND the novel's owner holds
+    /// the drop-folder permission.
     /// </summary>
-    public static async Task TryCopyJobOutputAsync(
-        CleanJob job,
+    public static async Task TryCopyOutputAsync(
+        Novel novel,
         AppSettings settings,
         string sourcePath,
-        JobLogger logger,
+        NovelEventLogger logger,
         UserManager<AppUser> users,
         AuthOptions auth,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(settings.DropFolder)) return;
 
-        if (job.User is null
-            || !await Permissions.CanUseDropFolderAsync(users, job.User, auth))
+        if (novel.User is null
+            || !await Permissions.CanUseDropFolderAsync(users, novel.User, auth))
         {
-            await logger.LogAsync(job.Id, "info",
-                "Drop folder skipped: the job's owner does not have the BookDrop permission.", ct);
+            await logger.LogAsync(novel.Id, "info",
+                "Drop folder skipped: the novel's owner does not have the drop-folder permission.", ct);
             return;
         }
 
         try
         {
-            var result = Copy(settings.DropFolder, job.OriginalFileName, sourcePath);
-            await logger.LogAsync(job.Id, "info", $"Copied to drop folder: {result.DestinationPath}", ct);
+            var result = Copy(settings.DropFolder, novel.OriginalFileName, sourcePath);
+            await logger.LogAsync(novel.Id, "info", $"Copied to drop folder: {result.DestinationPath}", ct);
         }
         catch (Exception ex)
         {
-            await logger.LogAsync(job.Id, "warn", $"Drop folder copy failed: {ex.Message}", ct);
+            await logger.LogAsync(novel.Id, "warn", $"Drop folder copy failed: {ex.Message}", ct);
         }
     }
 

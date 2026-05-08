@@ -1,4 +1,3 @@
-using System.Linq;
 using System.Security.Claims;
 using AngleSharp.Html;
 using AngleSharp.Html.Parser;
@@ -11,8 +10,8 @@ using Microsoft.EntityFrameworkCore;
 namespace NovelCleaner.Server.Endpoints;
 
 /// <summary>
-/// File-editor surface — surfaces a job's git-backed page repository.
-/// Each route is rooted at <c>/api/novels/{jobId}</c> because pages belong
+/// File-editor surface — surfaces a novel's git-backed page repository.
+/// Each route is rooted at <c>/api/novels/{novelId}</c> because pages belong
 /// to a novel. The page <c>path</c> contains '/' so it travels in a query
 /// param rather than a route segment.
 /// </summary>
@@ -20,17 +19,17 @@ public static class PagesEndpoints
 {
     public static void MapPagesEndpoints(this IEndpointRouteBuilder app)
     {
-        var group = app.MapGroup("/api/novels/{jobId:guid}/pages").RequireAuthorization();
+        var group = app.MapGroup("/api/novels/{novelId:guid}/pages").RequireAuthorization();
 
         // Sidebar feed — list every page with a coarse status flag so the UI
         // can put a dot next to modified ones.
-        group.MapGet("/", async (Guid jobId, HttpContext http, AppDbContext db, BookRepo repos) =>
+        group.MapGet("/", async (Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath))
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath))
                 return Results.Ok(Array.Empty<object>());
-            var pages = repos.ListPages(job.RepoPath)
+            var pages = editorRepo.ListPages(novel.RepoPath)
                 .Select(p => new
                 {
                     path = p.Path,
@@ -45,16 +44,16 @@ public static class PagesEndpoints
         // The frontend renders content in the contenteditable; the diff
         // hunks drive the accept/reject UI.
         group.MapGet("/page", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             try
             {
-                var p = repos.ReadPage(job.RepoPath, path);
+                var p = editorRepo.ReadPage(novel.RepoPath, path);
                 return Results.Ok(new
                 {
                     path = p.Path,
@@ -72,16 +71,16 @@ public static class PagesEndpoints
         // the proxy below + a transparent-bg style so the iframe blends
         // into the surrounding app theme.
         group.MapGet("/preview", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path, [FromQuery] string? theme,
             [FromQuery] string? source) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
 
-            var docName = repos.ReadDocName(job.RepoPath, path);
+            var docName = editorRepo.ReadDocName(novel.RepoPath, path);
             if (docName is null)
                 return Results.BadRequest(new { error = "no original-doc mapping for page" });
 
@@ -97,20 +96,20 @@ public static class PagesEndpoints
             string html;
             if (string.Equals(source, "diff", StringComparison.OrdinalIgnoreCase))
             {
-                var initialHtml = repos.ReadInitialContent(job.RepoPath, path);
-                var workingTreePath2 = Path.Combine(job.RepoPath, path);
+                var initialHtml = editorRepo.ReadInitialContent(novel.RepoPath, path);
+                var workingTreePath2 = Path.Combine(novel.RepoPath, path);
                 var currentHtml = File.Exists(workingTreePath2)
                     ? await File.ReadAllTextAsync(workingTreePath2)
-                    : repos.ReadHeadContent(job.RepoPath, path);
+                    : editorRepo.ReadHeadContent(novel.RepoPath, path);
                 var darkMode = string.Equals(theme, "dark", StringComparison.OrdinalIgnoreCase);
                 html = BuildDiffHtml(initialHtml, currentHtml, darkMode);
             }
             else
             {
-                var workingTreePath = Path.Combine(job.RepoPath, path);
+                var workingTreePath = Path.Combine(novel.RepoPath, path);
                 html = File.Exists(workingTreePath)
                     ? await File.ReadAllTextAsync(workingTreePath)
-                    : repos.ReadHeadContent(job.RepoPath, path);
+                    : editorRepo.ReadHeadContent(novel.RepoPath, path);
                 // Strip <script> / event handlers from publisher HTML so the
                 // sandboxed iframe doesn't log "blocked script" warnings.
                 html = StripScripts(html);
@@ -118,7 +117,7 @@ public static class PagesEndpoints
             var previewBytes = System.Text.Encoding.UTF8.GetBytes(html);
 
             var chapterDir = Path.GetDirectoryName(docName)?.Replace('\\', '/') ?? "";
-            var baseHref = $"/api/novels/{jobId}/pages/asset/"
+            var baseHref = $"/api/novels/{novelId}/pages/asset/"
                 + (string.IsNullOrEmpty(chapterDir) ? "" : chapterDir + "/");
             var dark = string.Equals(theme, "dark", StringComparison.OrdinalIgnoreCase);
             previewBytes = InjectPreviewHead(previewBytes, baseHref, dark);
@@ -135,12 +134,12 @@ public static class PagesEndpoints
         // ".gif"/.webp/font types are mapped to sensible content-types so
         // browsers actually render them inline.
         group.MapGet("/asset/{**assetPath}", async (
-            Guid jobId, HttpContext http, AppDbContext db, string assetPath) =>
+            Guid novelId, HttpContext http, AppDbContext db, string assetPath) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (!File.Exists(job.InputStoragePath)) return Results.NotFound();
-            var hit = EpubHandler.ReadEntry(job.InputStoragePath, assetPath);
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (!File.Exists(novel.InputStoragePath)) return Results.NotFound();
+            var hit = EpubHandler.ReadEntry(novel.InputStoragePath, assetPath);
             if (hit is null) return Results.NotFound();
             // Cache aggressively in the iframe — assets don't change between
             // preview reloads. Lets the next switch into Preview render
@@ -152,14 +151,14 @@ public static class PagesEndpoints
         // Save the user's edit to the working tree. No commit — the diff
         // shows up immediately and the user explicitly accepts via /commit.
         group.MapPut("/page", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path, [FromBody] WriteDto dto) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
-            repos.WritePage(job.RepoPath, path, dto.Content ?? "");
+            editorRepo.WritePage(novel.RepoPath, path, dto.Content ?? "");
             return Results.NoContent();
         });
 
@@ -167,15 +166,15 @@ public static class PagesEndpoints
         // "accept all changes" action; hunk-level accept lands in a follow-
         // up that diff-parses and stages partial files.
         group.MapPost("/commit", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
-            JobFinalizer finalizer, [FromBody] CommitDto dto, CancellationToken ct) =>
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
+            NovelFinalizer finalizer, [FromBody] CommitDto dto, CancellationToken ct) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             var msg = string.IsNullOrWhiteSpace(dto.Message) ? "User edit" : dto.Message.Trim();
-            var committed = repos.CommitAll(job.RepoPath, msg);
-            if (committed) await finalizer.FinalizeAsync(jobId, ct);
+            var committed = editorRepo.CommitAll(novel.RepoPath, msg);
+            if (committed) await finalizer.FinalizeAsync(novelId, ct);
             return Results.Ok(new { committed });
         });
 
@@ -183,31 +182,31 @@ public static class PagesEndpoints
         // user can ratify a single page without rolling in pending edits
         // from other pages.
         group.MapPost("/commit-page", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
-            JobFinalizer finalizer, [FromQuery] string path, [FromBody] CommitDto dto,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
+            NovelFinalizer finalizer, [FromQuery] string path, [FromBody] CommitDto dto,
             CancellationToken ct) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             var msg = string.IsNullOrWhiteSpace(dto.Message)
                 ? $"Accept page {path}"
                 : dto.Message.Trim();
-            var committed = repos.CommitPage(job.RepoPath, path, msg);
-            if (committed) await finalizer.FinalizeAsync(jobId, ct);
+            var committed = editorRepo.CommitPage(novel.RepoPath, path, msg);
+            if (committed) await finalizer.FinalizeAsync(novelId, ct);
             return Results.Ok(new { committed });
         });
 
         // Batch accept: stage + commit every path in the body as one
         // commit. Powers the file tree's "Accept selected pages" action.
         group.MapPost("/commit-many", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
-            JobFinalizer finalizer, [FromBody] PathsDto dto, CancellationToken ct) =>
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
+            NovelFinalizer finalizer, [FromBody] PathsDto dto, CancellationToken ct) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (dto?.Paths is null || dto.Paths.Count == 0)
                 return Results.BadRequest(new { error = "No paths provided." });
             foreach (var p in dto.Paths)
@@ -215,39 +214,39 @@ public static class PagesEndpoints
             var msg = string.IsNullOrWhiteSpace(dto.Message)
                 ? $"Accept {dto.Paths.Count} page(s)"
                 : dto.Message.Trim();
-            var committed = repos.CommitMany(job.RepoPath, dto.Paths, msg);
-            if (committed) await finalizer.FinalizeAsync(jobId, ct);
+            var committed = editorRepo.CommitMany(novel.RepoPath, dto.Paths, msg);
+            if (committed) await finalizer.FinalizeAsync(novelId, ct);
             return Results.Ok(new { committed });
         });
 
         // Batch reject: throw away every working-tree change on the
         // listed paths. Powers the file tree's "Reject selected pages".
         group.MapPost("/discard-many", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromBody] PathsDto dto) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (dto?.Paths is null || dto.Paths.Count == 0)
                 return Results.BadRequest(new { error = "No paths provided." });
             foreach (var p in dto.Paths)
                 if (!IsSafeRelPath(p)) return Results.BadRequest(new { error = $"invalid path: {p}" });
-            repos.DiscardMany(job.RepoPath, dto.Paths);
+            editorRepo.DiscardMany(novel.RepoPath, dto.Paths);
             return Results.NoContent();
         });
 
         // Throw away every working-tree change for one page (= reject all
         // proposals on that page). The committed history is untouched.
         group.MapPost("/discard", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
-            repos.DiscardPage(job.RepoPath, path);
+            editorRepo.DiscardPage(novel.RepoPath, path);
             return Results.NoContent();
         });
 
@@ -255,14 +254,14 @@ public static class PagesEndpoints
         // while keeping every OTHER pending change. Hunk index is the
         // 0-based position in the unified diff returned by GET /page.
         group.MapPost("/reject-hunk", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path, [FromQuery] int index) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
-            var ok = repos.RejectHunk(job.RepoPath, path, index);
+            var ok = editorRepo.RejectHunk(novel.RepoPath, path, index);
             if (!ok) return Results.BadRequest(new { error = "hunk index out of range or no diff for path" });
             return Results.NoContent();
         });
@@ -271,31 +270,31 @@ public static class PagesEndpoints
         // rest as working-tree changes for further triage. The editor shows
         // the leftover hunks on the next refetch.
         group.MapPost("/accept-hunk", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
-            JobFinalizer finalizer, [FromQuery] string path, [FromQuery] int index,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
+            NovelFinalizer finalizer, [FromQuery] string path, [FromQuery] int index,
             CancellationToken ct) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
-            var ok = repos.AcceptHunk(job.RepoPath, path, index, $"Accept hunk {index} on {path}");
+            var ok = editorRepo.AcceptHunk(novel.RepoPath, path, index, $"Accept hunk {index} on {path}");
             if (!ok) return Results.BadRequest(new { error = "hunk index out of range or no diff for path" });
-            await finalizer.FinalizeAsync(jobId, ct);
+            await finalizer.FinalizeAsync(novelId, ct);
             return Results.NoContent();
         });
 
         // List every commit that touched a given page. Drives the
         // version-history panel in the editor.
         group.MapGet("/history", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.Ok(Array.Empty<object>());
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.Ok(Array.Empty<object>());
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
-            var revs = repos.ListPageHistory(job.RepoPath, path)
+            var revs = editorRepo.ListPageHistory(novel.RepoPath, path)
                 .Select(r => new
                 {
                     sha = r.Sha,
@@ -310,15 +309,15 @@ public static class PagesEndpoints
         // Read a page as it was at a specific commit — used by the
         // history panel's preview pane.
         group.MapGet("/at", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path, [FromQuery] string sha) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             if (!IsSafeSha(sha)) return Results.BadRequest(new { error = "invalid sha" });
-            var content = repos.ReadPageAtCommit(job.RepoPath, path, sha);
+            var content = editorRepo.ReadPageAtCommit(novel.RepoPath, path, sha);
             if (content is null) return Results.NotFound();
             return Results.Ok(new { content });
         });
@@ -327,15 +326,15 @@ public static class PagesEndpoints
         // committing — the user reviews the restore as a normal pending
         // diff and can accept/reject it like any other edit.
         group.MapPost("/restore", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] string path, [FromQuery] string sha) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (string.IsNullOrEmpty(job.RepoPath)) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (string.IsNullOrEmpty(novel.RepoPath)) return Results.NotFound();
             if (!IsSafeRelPath(path)) return Results.BadRequest(new { error = "invalid path" });
             if (!IsSafeSha(sha)) return Results.BadRequest(new { error = "invalid sha" });
-            var ok = repos.RestorePageToCommit(job.RepoPath, path, sha);
+            var ok = editorRepo.RestorePageToCommit(novel.RepoPath, path, sha);
             if (!ok) return Results.BadRequest(new { error = "unknown sha or path missing at that revision" });
             return Results.NoContent();
         });
@@ -347,16 +346,16 @@ public static class PagesEndpoints
         // the fix. Destructive: any user edits not yet exported to the
         // EPUB are lost.
         group.MapPost("/reset", async (
-            Guid jobId, HttpContext http, AppDbContext db, BookRepo repos,
-            BookImporter importer, JobFinalizer finalizer, JobLogger jobLogger,
+            Guid novelId, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
+            NovelImporter importer, NovelFinalizer finalizer, NovelEventLogger logger,
             CancellationToken ct) =>
         {
-            var job = await GetOwnedJobAsync(db, http, jobId);
-            if (job is null) return Results.NotFound();
-            if (!File.Exists(job.InputStoragePath))
+            var novel = await GetOwnedNovelAsync(db, http, novelId);
+            if (novel is null) return Results.NotFound();
+            if (!File.Exists(novel.InputStoragePath))
                 return Results.BadRequest(new { error = "Original file is missing." });
 
-            var path = repos.PathFor(jobId);
+            var path = editorRepo.PathFor(novelId);
             if (Directory.Exists(path))
             {
                 try { ForceDeleteDirectory(path); }
@@ -370,30 +369,22 @@ public static class PagesEndpoints
             // metadata from the OPF wins outright — the previous skip-if-set
             // guard meant editing metadata once would lock out future resets
             // from picking up a corrected EPUB.
-            var (repoPath, meta) = await importer.ImportAsync(jobId, job.InputStoragePath, ct);
-            job.RepoPath = repoPath;
-            BookImporter.ApplyMetadata(job, meta, overwrite: true);
+            var (repoPath, meta) = await importer.ImportAsync(novelId, novel.InputStoragePath, ct);
+            novel.RepoPath = repoPath;
+            NovelImporter.ApplyMetadata(novel, meta, overwrite: true);
 
             await db.SaveChangesAsync(ct);
             // HEAD is now back to "initial = raw extraction with metadata
             // refreshed". Re-bake the cleaned EPUB so the Download button
             // doesn't keep serving the old finalized output.
-            await finalizer.FinalizeAsync(jobId, ct);
-            var pageCount = repoPath is null ? 0 : repos.ListPages(repoPath).Count;
-            await jobLogger.LogAsync(jobId, "info",
+            await finalizer.FinalizeAsync(novelId, ct);
+            var pageCount = repoPath is null ? 0 : editorRepo.ListPages(repoPath).Count;
+            await logger.LogAsync(novelId, "info",
                 $"Editor repo rebuilt from EPUB — {pageCount} page(s) re-extracted.", ct);
             return Results.Ok(new { pages = pageCount });
         });
     }
 
-    /// <summary>
-    /// Inserts a <c>&lt;base href="…"&gt;</c> and a transparent-background
-    /// <c>&lt;style&gt;</c> into the chapter HTML so the preview iframe can
-    /// (a) reach the publisher's stylesheet/images via the asset proxy and
-    /// (b) blend into the surrounding app theme. Done as a string splice
-    /// rather than a full DOM round-trip — preserves doctype, processing
-    /// instructions, and any quirks AngleSharp might canonicalize away.
-    /// </summary>
     /// <summary>
     /// Builds a self-contained HTML page rendering the paragraph-level diff
     /// between <paramref name="initialHtml"/> and <paramref name="currentHtml"/>.
@@ -525,6 +516,14 @@ public static class PagesEndpoints
         }
     }
 
+    /// <summary>
+    /// Inserts a <c>&lt;base href="…"&gt;</c> and a transparent-background
+    /// <c>&lt;style&gt;</c> into the chapter HTML so the preview iframe can
+    /// (a) reach the publisher's stylesheet/images via the asset proxy and
+    /// (b) blend into the surrounding app theme. Done as a string splice
+    /// rather than a full DOM round-trip — preserves doctype, processing
+    /// instructions, and any quirks AngleSharp might canonicalize away.
+    /// </summary>
     private static byte[] InjectPreviewHead(byte[] htmlBytes, string baseHref, bool dark)
     {
         var html = System.Text.Encoding.UTF8.GetString(htmlBytes);
@@ -571,19 +570,19 @@ public static class PagesEndpoints
     private static Guid GetUserId(HttpContext http)
         => Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-    private static async Task<CleanJob?> GetOwnedJobAsync(AppDbContext db, HttpContext http, Guid id)
+    private static async Task<Novel?> GetOwnedNovelAsync(AppDbContext db, HttpContext http, Guid id)
     {
         var userId = GetUserId(http);
         var isAdmin = http.User.IsInRole(AppRoles.Admin);
         return isAdmin
-            ? await db.CleanJobs.FirstOrDefaultAsync(j => j.Id == id)
-            : await db.CleanJobs.FirstOrDefaultAsync(j => j.Id == id && j.UserId == userId);
+            ? await db.Novels.FirstOrDefaultAsync(n => n.Id == id)
+            : await db.Novels.FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
     }
 
     /// <summary>
     /// Fast-fail path-traversal guard. Pages live under <c>pages/</c> and
     /// must not contain <c>..</c>; stronger validation happens inside
-    /// <see cref="BookRepo.WritePage"/> too.
+    /// <see cref="NovelEditorRepo.WritePage"/> too.
     /// </summary>
     private static bool IsSafeRelPath(string? path)
     {

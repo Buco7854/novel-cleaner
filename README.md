@@ -5,9 +5,9 @@ A multi-user web application that strips watermarks, tracking codes, distributor
 - **Backend** — ASP.NET Core 10 (Identity, EF Core + SQLite, SignalR)
 - **Frontend** — React 18 + TypeScript + Tailwind CSS + Headless UI
 - **Auth** — local password + OIDC (auto-provision, optional group → role mapping)
-- **OPDS sources** — connect Calibre / Standard Ebooks / your own catalog and import books in one click
-- **Jobs** — uploads run in the background; live logs and progress stream over SignalR
-- **Storage** — SQLite DB in `/data`, uploaded books and cleaned outputs in `/books` (separate volumes)
+- **OPDS sources** — connect Calibre / Standard Ebooks / your own catalog and import novels in one click
+- **Background processing** — uploads clean in the background; live logs and progress stream over SignalR
+- **Storage** — SQLite DB in `/data`, uploaded novels and cleaned outputs in `/books` (separate volumes)
 - **Drop folder** — optional auto-copy of cleaned EPUBs to a folder of your choice (e.g. `/bookdrop`)
 - **Container** — single multi-arch image (amd64 + arm64), published to GHCR
 
@@ -152,9 +152,9 @@ To map several IdP groups to a single role, set numbered indices directly: `Auth
 | --- | --- | --- | --- |
 | `NOVELCLEANER_DEFAULT_BOOK_DROP` | `Auth__DefaultBookDrop` | `true` | When `true`, every authenticated user has permission to use the drop folder. When `false`, only admins and users with the `BookDrop` role do (granted via `NOVELCLEANER_OIDC_DROP_GROUP` or directly in the DB). |
 
-The drop folder permission is checked **at the time the job runs**:
-- If the job's owner has it → the cleaned book is auto-copied at the end AND the `Copy to drop folder` button is shown on the job page.
-- If they don't → the auto-copy is silently skipped (with a `info` line in the job log) and the button is hidden.
+The drop folder permission is checked **at the time the cleanup runs**:
+- If the novel's owner has it → the cleaned EPUB is auto-copied at the end AND the `Copy to drop folder` button is shown on the editor page.
+- If they don't → the auto-copy is silently skipped (with a `info` line in the novel's log) and the button is hidden.
 
 Admins always have the permission regardless of any setting.
 
@@ -169,17 +169,15 @@ The Settings page is split into two sections with very different semantics:
 | LLM API key, base URL, model | Any OpenAI-compatible chat completions endpoint |
 | Parallel requests | LLM calls in flight concurrently per job (1–10). Caps cost / rate-limit usage. |
 | System prompt — additional instructions | Appended to the locked output-format prompt |
-| **Drop folder** | Optional absolute server path. When set AND the job's owner has the BookDrop permission, every cleaned EPUB is auto-copied as `{name}_cleaned.epub`. Existing files are never overwritten — duplicates get ` (1)`, ` (2)`, … suffixes. Failures are logged as warnings without failing the job. |
+| **Drop folder** | Optional absolute server path. When set AND the novel's owner has the BookDrop permission, every cleaned EPUB is auto-copied as `{name}_cleaned.epub`. Existing files are never overwritten — duplicates get ` (1)`, ` (2)`, … suffixes. Failures are logged as warnings without failing the cleanup. |
 
 **Personal (per-user)** — every user manages their own:
 
 | Setting | Purpose |
 | --- | --- |
-| Default scan mode (Pattern / Full-page) | Per-job overridable on upload |
-| Context window | Characters of context to include around each pattern match |
-| Trigger patterns | Regex/literal patterns that flag excerpts for the LLM |
+| System prompt addition | Personal instructions appended after the admin's prompt at every LLM call (e.g. "preserve em-dashes", "this book is in French") |
 
-The Drop folder also has a **manual re-trigger** button on the job detail page that copies the cleaned output again using the *current* drop folder setting, so you can re-route after the fact. The button is only shown when the job's owner has the BookDrop permission.
+The Drop folder also has a **manual re-trigger** button on the editor page that copies the cleaned output again using the *current* drop folder setting, so you can re-route after the fact. The button is only shown when the novel's owner has the BookDrop permission.
 
 See `.env.example` for the full template and `docker-compose.yml` for the wiring.
 
@@ -192,10 +190,12 @@ server/   ASP.NET Core 10 Web API (NovelCleaner.Server)
           ├─ EF Core + SQLite (DB at /data/novelcleaner.db)
           ├─ ASP.NET Core Identity (cookie auth)
           ├─ OIDC handler (auto-provisioning + optional group mapping)
-          ├─ Background JobWorker — Channels-based queue
-          ├─ SignalR JobHub — pushes log lines, status, and per-page progress
+          ├─ Background NovelProcessor — Channels-based queue (NovelProcessingQueue)
+          ├─ SignalR NovelHub — pushes log lines, status, and per-page progress
+          ├─ NovelEditorRepo — one git repo per novel, file per page, edit history as commits
+          ├─ NovelImporter / NovelFinalizer — EPUB → editor repo / editor repo → cleaned EPUB
           ├─ EPUB pipeline — AngleSharp + System.IO.Compression
-          ├─ OPDS client — Atom feed parser + book downloader (with SSRF guard)
+          ├─ OPDS client — Atom feed parser + downloader (with SSRF guard)
           └─ DropFolderHelper — shared drop-folder copy logic (auto + manual)
 tests/    xUnit test project covering pure helpers
 ```

@@ -10,8 +10,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
 {
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<UserSettings> UserSettings => Set<UserSettings>();
-    public DbSet<CleanJob> CleanJobs => Set<CleanJob>();
-    public DbSet<JobLogEntry> JobLogs => Set<JobLogEntry>();
+    public DbSet<Novel> Novels => Set<Novel>();
+    public DbSet<NovelLogEntry> NovelLogs => Set<NovelLogEntry>();
     public DbSet<OpdsSource> OpdsSources => Set<OpdsSource>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -47,19 +47,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             b.HasIndex(u => new { u.Provider, u.ExternalSubject }).IsUnique(false);
         });
 
-        builder.Entity<CleanJob>(b =>
+        builder.Entity<Novel>(b =>
         {
-            b.HasIndex(j => j.UserId);
-            b.HasIndex(j => j.Status);
-            b.HasMany(j => j.Logs)
-                .WithOne(l => l.Job)
-                .HasForeignKey(l => l.JobId)
+            b.HasIndex(n => n.UserId);
+            b.HasIndex(n => n.Status);
+            b.HasMany(n => n.Logs)
+                .WithOne(l => l.Novel)
+                .HasForeignKey(l => l.NovelId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        builder.Entity<JobLogEntry>(b =>
+        builder.Entity<NovelLogEntry>(b =>
         {
-            b.HasIndex(l => new { l.JobId, l.Id });
+            b.HasIndex(l => new { l.NovelId, l.Id });
         });
 
         builder.Entity<OpdsSource>(b =>

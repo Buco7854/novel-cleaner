@@ -18,13 +18,13 @@ public class AppSettings
     public string BaseUrl { get; set; } = "";
     public string Model { get; set; } = "";
 
-    /// <summary>Concurrent LLM requests per job. Affects cost / rate limits, hence admin-scoped.</summary>
+    /// <summary>Concurrent LLM requests per novel. Affects cost / rate limits, hence admin-scoped.</summary>
     public int MaxWorkers { get; set; } = 3;
 
     /// <summary>Optional additional instructions appended to the locked output-format prompt.</summary>
     public string? SystemPrompt { get; set; }
 
-    /// <summary>Optional absolute path to copy each cleaned EPUB to once the job finishes.</summary>
+    /// <summary>Optional absolute path to copy each cleaned EPUB to once the novel finishes.</summary>
     public string? DropFolder { get; set; }
 
     /// <summary>

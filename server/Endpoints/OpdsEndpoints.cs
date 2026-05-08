@@ -165,7 +165,7 @@ public static class OpdsEndpoints
         // ----- Import (download + optionally queue cleaning) -----
         group.MapPost("/sources/{id:guid}/import", async (
             Guid id, HttpContext http, AppDbContext db, OpdsService opds,
-            BookImporter importer, JobQueue queue,
+            NovelImporter importer, NovelProcessingQueue queue,
             [FromBody] ImportRequest req, CancellationToken ct) =>
         {
             var uid = UserId(http);
@@ -196,7 +196,7 @@ public static class OpdsEndpoints
             var newId = Guid.NewGuid();
             var (repoPath, meta) = await importer.ImportAsync(newId, path, ct);
 
-            var job = new CleanJob
+            var novel = new Novel
             {
                 Id = newId,
                 UserId = uid,
@@ -209,16 +209,16 @@ public static class OpdsEndpoints
                 Language    = meta.Language,
                 Publisher   = meta.Publisher,
                 Description = meta.Description,
-                Status = mode == OpdsImportMode.AddAndRunAi ? JobStatus.Queued : JobStatus.Idle,
+                Status = mode == OpdsImportMode.AddAndRunAi ? NovelStatus.Queued : NovelStatus.Idle,
                 // Admin-managed
                 MaxWorkers = appS.MaxWorkers,
                 Model = appS.Model,
             };
-            db.CleanJobs.Add(job);
+            db.Novels.Add(novel);
             await db.SaveChangesAsync(ct);
             if (mode == OpdsImportMode.AddAndRunAi)
-                await queue.EnqueueAsync(job.Id, ct);
-            return Results.Ok(new { novelId = job.Id });
+                await queue.EnqueueAsync(novel.Id, ct);
+            return Results.Ok(new { novelId = novel.Id });
         });
     }
 

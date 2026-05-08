@@ -5,19 +5,24 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace NovelCleaner.Server.Services;
 
-public sealed class JobLogger(IServiceScopeFactory scopes, IHubContext<JobHub> hub)
+/// <summary>
+/// Persists log lines + status transitions for a novel and broadcasts the
+/// same payload over the SignalR hub group. Centralizes the "log + push"
+/// pattern so callers don't have to repeat the dual-write themselves.
+/// </summary>
+public sealed class NovelEventLogger(IServiceScopeFactory scopes, IHubContext<NovelHub> hub)
 {
     public async Task LogAsync(
-        Guid jobId,
+        Guid novelId,
         string level,
         string message,
         CancellationToken ct = default,
         string? detail = null,
         string? groupId = null)
     {
-        var entry = new JobLogEntry
+        var entry = new NovelLogEntry
         {
-            JobId = jobId,
+            NovelId = novelId,
             Level = level,
             Message = message,
             Detail = detail,
@@ -27,26 +32,26 @@ public sealed class JobLogger(IServiceScopeFactory scopes, IHubContext<JobHub> h
 
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        db.JobLogs.Add(entry);
+        db.NovelLogs.Add(entry);
         await db.SaveChangesAsync(ct);
 
-        await hub.Clients.Group(JobHub.GroupForNovel(jobId)).SendAsync(
+        await hub.Clients.Group(NovelHub.GroupForNovel(novelId)).SendAsync(
             "log",
-            new { novelId = jobId, entry.Timestamp, entry.Level, entry.Message, entry.Detail, entry.GroupId },
+            new { novelId, entry.Timestamp, entry.Level, entry.Message, entry.Detail, entry.GroupId },
             cancellationToken: ct);
     }
 
     public async Task UpdateStatusAsync(
-        Guid jobId,
-        JobStatus status,
+        Guid novelId,
+        NovelStatus status,
         int? progress = null,
         int? done = null,
         int? total = null,
         CancellationToken ct = default)
     {
-        await hub.Clients.Group(JobHub.GroupForNovel(jobId)).SendAsync(
+        await hub.Clients.Group(NovelHub.GroupForNovel(novelId)).SendAsync(
             "status",
-            new { novelId = jobId, status = status.ToString(), progress, done, total },
+            new { novelId, status = status.ToString(), progress, done, total },
             cancellationToken: ct);
     }
 }

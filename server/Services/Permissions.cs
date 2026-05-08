@@ -7,7 +7,7 @@ namespace NovelCleaner.Server.Services;
 public static class Permissions
 {
     /// <summary>
-    /// Whether <paramref name="user"/> may have cleaned books copied to the
+    /// Whether <paramref name="user"/> may have cleaned novels copied to the
     /// admin-configured drop folder. Admins always can. When
     /// <see cref="AuthOptions.DefaultBookDrop"/> is true, every authenticated
     /// user can. Otherwise, only users with the <c>BookDrop</c> role.

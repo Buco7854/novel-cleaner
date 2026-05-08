@@ -12,7 +12,7 @@ public class AppUser : IdentityUser<Guid>
     public DateTimeOffset? LastLoginAt { get; set; }
 
     public UserSettings? Settings { get; set; }
-    public ICollection<CleanJob> Jobs { get; set; } = [];
+    public ICollection<Novel> Novels { get; set; } = [];
 }
 
 public class AppRole : IdentityRole<Guid>
@@ -25,6 +25,10 @@ public static class AppRoles
 {
     public const string Admin    = "Admin";
     public const string User     = "User";
-    /// <summary>Permission to use the configured drop folder for cleaned books.</summary>
+    /// <summary>
+    /// Permission to use the configured drop folder for cleaned novels. The
+    /// constant value is kept as <c>BookDrop</c> for backwards compatibility
+    /// with existing role rows and the documented OIDC group-mapping env var.
+    /// </summary>
     public const string BookDrop = "BookDrop";
 }

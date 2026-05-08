@@ -11,48 +11,54 @@ using Microsoft.Extensions.Options;
 
 namespace NovelCleaner.Server.Endpoints;
 
-public static class JobsEndpoints
+/// <summary>
+/// CRUD + lifecycle endpoints for novels (the EPUBs in a user's library).
+/// Mounted at <c>/api/novels</c>; the per-page editor surface lives in
+/// <see cref="PagesEndpoints"/> and the cross-novel actions (finalize, run-AI,
+/// clone) in <see cref="ReviewsEndpoints"/>.
+/// </summary>
+public static class NovelsEndpoints
 {
-    public static void MapJobsEndpoints(this IEndpointRouteBuilder app)
+    public static void MapNovelsEndpoints(this IEndpointRouteBuilder app)
     {
         var group = app.MapGroup("/api/novels").RequireAuthorization();
 
-        group.MapGet("/", async (HttpContext http, AppDbContext db, BookRepo bookRepo,
+        group.MapGet("/", async (HttpContext http, AppDbContext db, NovelEditorRepo editorRepo,
             [FromQuery] int page = 1, [FromQuery] int size = 20) =>
         {
             size = Math.Clamp(size, 1, 100);
             page = Math.Max(1, page);
             var userId = GetUserId(http);
-            var q = db.CleanJobs.AsNoTracking().Where(j => j.UserId == userId);
+            var q = db.Novels.AsNoTracking().Where(n => n.UserId == userId);
             var total = await q.CountAsync();
-            var rows = await q.OrderByDescending(j => j.CreatedAt)
+            var rows = await q.OrderByDescending(n => n.CreatedAt)
                 .Skip((page - 1) * size)
                 .Take(size)
-                .Select(j => new
+                .Select(n => new
                 {
-                    j.Id, j.OriginalFileName, j.Title, j.Author,
-                    j.FileSizeBytes, j.Status, j.Model, j.RemovedCount,
-                    j.CreatedAt, j.CompletedAt, j.OutputStoragePath, j.RepoPath,
+                    n.Id, n.OriginalFileName, n.Title, n.Author,
+                    n.FileSizeBytes, n.Status, n.Model, n.RemovedCount,
+                    n.CreatedAt, n.CompletedAt, n.OutputStoragePath, n.RepoPath,
                 }).ToListAsync();
 
             // Derive the same simplified status as the detail endpoint —
             // cheap libgit2 status call, runs at most 100 times per page.
-            var items = rows.Select(j =>
+            var items = rows.Select(n =>
             {
-                var status = DeriveListDisplayStatus(j.Status, j.RepoPath, bookRepo);
+                var status = DeriveListDisplayStatus(n.Status, n.RepoPath, editorRepo);
                 return new
                 {
-                    id = j.Id,
-                    fileName = j.OriginalFileName,
-                    title = j.Title,
-                    author = j.Author,
-                    sizeBytes = j.FileSizeBytes,
+                    id = n.Id,
+                    fileName = n.OriginalFileName,
+                    title = n.Title,
+                    author = n.Author,
+                    sizeBytes = n.FileSizeBytes,
                     status = status.ToString(),
-                    model = j.Model,
-                    removed = j.RemovedCount,
-                    createdAt = j.CreatedAt,
-                    completedAt = j.CompletedAt,
-                    hasOutput = j.OutputStoragePath != null,
+                    model = n.Model,
+                    removed = n.RemovedCount,
+                    createdAt = n.CreatedAt,
+                    completedAt = n.CompletedAt,
+                    hasOutput = n.OutputStoragePath != null,
                 };
             }).ToList();
             return Results.Ok(new { items, total, page, size });
@@ -62,12 +68,12 @@ public static class JobsEndpoints
             Guid id,
             HttpContext http,
             AppDbContext db,
-            BookRepo bookRepo) =>
+            NovelEditorRepo editorRepo) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            var logs = await db.JobLogs.AsNoTracking()
-                .Where(l => l.JobId == id).OrderBy(l => l.Id).Take(2000)
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            var logs = await db.NovelLogs.AsNoTracking()
+                .Where(l => l.NovelId == id).OrderBy(l => l.Id).Take(2000)
                 .Select(l => new { l.Timestamp, l.Level, l.Message, l.Detail, l.GroupId })
                 .ToListAsync();
 
@@ -89,28 +95,28 @@ public static class JobsEndpoints
             // Completed / Failed / Canceled aren't surfaced — the log panel
             // tells you what happened, the pill just answers "is there
             // anything for me to review?".
-            var status = DeriveDisplayStatus(job, bookRepo);
+            var status = DeriveDisplayStatus(novel, editorRepo);
 
             return Results.Ok(new
             {
-                id = job.Id,
-                fileName = job.OriginalFileName,
-                title       = job.Title,
-                author      = job.Author,
-                language    = job.Language,
-                publisher   = job.Publisher,
-                description = job.Description,
+                id = novel.Id,
+                fileName = novel.OriginalFileName,
+                title       = novel.Title,
+                author      = novel.Author,
+                language    = novel.Language,
+                publisher   = novel.Publisher,
+                description = novel.Description,
                 status = status.ToString(),
-                model = job.Model,
-                maxWorkers = job.MaxWorkers,
-                removed = job.RemovedCount,
-                error = job.ErrorMessage,
-                createdAt = job.CreatedAt,
-                startedAt = job.StartedAt,
-                completedAt = job.CompletedAt,
-                hasOutput = job.OutputStoragePath != null,
+                model = novel.Model,
+                maxWorkers = novel.MaxWorkers,
+                removed = novel.RemovedCount,
+                error = novel.ErrorMessage,
+                createdAt = novel.CreatedAt,
+                startedAt = novel.StartedAt,
+                completedAt = novel.CompletedAt,
+                hasOutput = novel.OutputStoragePath != null,
                 dropConfigured,
-                systemPrompt = job.SystemPrompt ?? "",
+                systemPrompt = novel.SystemPrompt ?? "",
                 logs,
             });
         });
@@ -119,53 +125,53 @@ public static class JobsEndpoints
             Guid id,
             HttpContext http,
             AppDbContext db,
-            JobLogger logger,
+            NovelEventLogger logger,
             UserManager<AppUser> userManager,
             IOptionsMonitor<AuthOptions> authOpts) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            if (job.OutputStoragePath is null || !File.Exists(job.OutputStoragePath))
-                return Results.BadRequest(new { error = "Job has no output file." });
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            if (novel.OutputStoragePath is null || !File.Exists(novel.OutputStoragePath))
+                return Results.BadRequest(new { error = "Novel has no output file." });
 
             var appSettings = await db.AppSettings.FirstOrDefaultAsync(s => s.Id == AppSettings.SingletonKey);
             if (appSettings is null || string.IsNullOrWhiteSpace(appSettings.DropFolder))
                 return Results.BadRequest(new { error = "No drop folder configured in settings." });
 
-            // Permission is keyed to the JOB OWNER, not the caller — admins
-            // viewing another user's job shouldn't be able to push into the
+            // Permission is keyed to the NOVEL OWNER, not the caller — admins
+            // viewing another user's novel shouldn't be able to push into the
             // drop folder on behalf of a non-permitted user.
-            var owner = await userManager.FindByIdAsync(job.UserId.ToString());
+            var owner = await userManager.FindByIdAsync(novel.UserId.ToString());
             if (owner is null
                 || !await Permissions.CanUseDropFolderAsync(userManager, owner, authOpts.CurrentValue))
                 return Results.Forbid();
 
             try
             {
-                var result = DropFolderHelper.Copy(appSettings.DropFolder, job.OriginalFileName, job.OutputStoragePath);
-                await logger.LogAsync(job.Id, "info", $"Manually copied to drop folder: {result.DestinationPath}");
+                var result = DropFolderHelper.Copy(appSettings.DropFolder, novel.OriginalFileName, novel.OutputStoragePath);
+                await logger.LogAsync(novel.Id, "info", $"Manually copied to drop folder: {result.DestinationPath}");
                 return Results.Ok(new { destination = result.DestinationPath });
             }
             catch (Exception ex)
             {
-                await logger.LogAsync(job.Id, "warn", $"Manual drop folder copy failed: {ex.Message}");
+                await logger.LogAsync(novel.Id, "warn", $"Manual drop folder copy failed: {ex.Message}");
                 return Results.Problem(ex.Message, statusCode: 500);
             }
         });
 
         group.MapGet("/{id:guid}/download", async (Guid id, HttpContext http, AppDbContext db) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null || job.OutputStoragePath is null || !File.Exists(job.OutputStoragePath))
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null || novel.OutputStoragePath is null || !File.Exists(novel.OutputStoragePath))
                 return Results.NotFound();
-            var stem = Path.GetFileNameWithoutExtension(job.OriginalFileName);
-            return Results.File(job.OutputStoragePath, "application/epub+zip", $"{stem}_cleaned.epub");
+            var stem = Path.GetFileNameWithoutExtension(novel.OriginalFileName);
+            return Results.File(novel.OutputStoragePath, "application/epub+zip", $"{stem}_cleaned.epub");
         });
 
         group.MapPost("/", async (
             HttpContext http,
             AppDbContext db,
-            BookImporter importer,
+            NovelImporter importer,
             IOptions<StorageOptions> storage) =>
         {
             // Multipart form posts are "simple" CORS requests, so a malicious
@@ -202,10 +208,10 @@ public static class JobsEndpoints
                     await file.CopyToAsync(stream);
 
                 // Initialize the editor's git repo and read OPF metadata in
-                // one call — see BookImporter for the shared pipeline.
+                // one call — see NovelImporter for the shared pipeline.
                 var (repoPath, meta) = await importer.ImportAsync(id, inputPath);
 
-                var job = new CleanJob
+                var novel = new Novel
                 {
                     Id = id,
                     UserId = userId,
@@ -220,12 +226,12 @@ public static class JobsEndpoints
                     Description = meta.Description,
                     // Idle = uploaded but no AI run yet. Editor is usable;
                     // the user kicks off processing from the toolbar.
-                    Status = JobStatus.Idle,
+                    Status = NovelStatus.Idle,
                     // Admin-managed (AppSettings)
                     MaxWorkers = appS.MaxWorkers,
                     Model = appS.Model,
                 };
-                db.CleanJobs.Add(job);
+                db.Novels.Add(novel);
                 created.Add(id);
             }
             await db.SaveChangesAsync();
@@ -238,9 +244,9 @@ public static class JobsEndpoints
         group.MapPut("/{id:guid}/prompt", async (
             Guid id, HttpContext http, AppDbContext db, [FromBody] PromptDto dto) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            job.SystemPrompt = string.IsNullOrWhiteSpace(dto.SystemPrompt)
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            novel.SystemPrompt = string.IsNullOrWhiteSpace(dto.SystemPrompt)
                 ? null : dto.SystemPrompt.Trim();
             await db.SaveChangesAsync();
             return Results.NoContent();
@@ -253,18 +259,18 @@ public static class JobsEndpoints
         // step. The OPF write is best-effort; a failure surfaces as a warning
         // log line but does not roll back the DB save.
         group.MapPut("/{id:guid}/metadata", async (
-            Guid id, HttpContext http, AppDbContext db, JobLogger logger, [FromBody] MetadataDto dto) =>
+            Guid id, HttpContext http, AppDbContext db, NovelEventLogger logger, [FromBody] MetadataDto dto) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
 
             string? Norm(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
-            job.Title       = Norm(dto.Title);
-            job.Author      = Norm(dto.Author);
-            job.Language    = Norm(dto.Language);
-            job.Publisher   = Norm(dto.Publisher);
-            job.Description = Norm(dto.Description);
+            novel.Title       = Norm(dto.Title);
+            novel.Author      = Norm(dto.Author);
+            novel.Language    = Norm(dto.Language);
+            novel.Publisher   = Norm(dto.Publisher);
+            novel.Description = Norm(dto.Description);
             await db.SaveChangesAsync();
 
             // Write to BOTH the input and the output EPUB. The download
@@ -273,49 +279,49 @@ public static class JobsEndpoints
             // appear in the editor's title but not in the file the user
             // actually downloads.
             var meta = new EpubMetadata(
-                job.Title, job.Author, job.Language, job.Publisher, job.Description);
-            foreach (var path in new[] { job.InputStoragePath, job.OutputStoragePath })
+                novel.Title, novel.Author, novel.Language, novel.Publisher, novel.Description);
+            foreach (var path in new[] { novel.InputStoragePath, novel.OutputStoragePath })
             {
                 if (string.IsNullOrEmpty(path) || !File.Exists(path)) continue;
                 try { EpubHandler.WriteMetadata(path, meta); }
                 catch (Exception ex)
                 {
-                    await logger.LogAsync(job.Id, "warn",
+                    await logger.LogAsync(novel.Id, "warn",
                         $"Could not write metadata into {Path.GetFileName(path)}: {ex.Message}");
                 }
             }
 
             return Results.Ok(new
             {
-                title       = job.Title,
-                author      = job.Author,
-                language    = job.Language,
-                publisher   = job.Publisher,
-                description = job.Description,
+                title       = novel.Title,
+                author      = novel.Author,
+                language    = novel.Language,
+                publisher   = novel.Publisher,
+                description = novel.Description,
             });
         });
 
-        // Wipe the persisted log lines for a job. The editor's "Clear" button
-        // calls this so a refresh doesn't repopulate the panel from server
-        // history. Live SignalR feed continues for any new lines emitted by
-        // an in-flight run.
+        // Wipe the persisted log lines for a novel. The editor's "Clear"
+        // button calls this so a refresh doesn't repopulate the panel from
+        // server history. Live SignalR feed continues for any new lines
+        // emitted by an in-flight run.
         group.MapDelete("/{id:guid}/logs", async (Guid id, HttpContext http, AppDbContext db) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            await db.JobLogs.Where(l => l.JobId == id).ExecuteDeleteAsync();
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            await db.NovelLogs.Where(l => l.NovelId == id).ExecuteDeleteAsync();
             return Results.NoContent();
         });
 
-        group.MapPost("/{id:guid}/pause", async (Guid id, HttpContext http, AppDbContext db, JobLogger logger) =>
+        group.MapPost("/{id:guid}/pause", async (Guid id, HttpContext http, AppDbContext db, NovelEventLogger logger) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            if (job.Status != JobStatus.Running) return Results.BadRequest(new { error = "Only running jobs can be paused." });
-            job.Status = JobStatus.Paused;
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            if (novel.Status != NovelStatus.Running) return Results.BadRequest(new { error = "Only running novels can be paused." });
+            novel.Status = NovelStatus.Paused;
             await db.SaveChangesAsync();
-            await logger.LogAsync(job.Id, "info", "Pause requested — no new excerpts will start until resumed.");
-            await logger.UpdateStatusAsync(job.Id, JobStatus.Paused);
+            await logger.LogAsync(novel.Id, "info", "Pause requested — no new excerpts will start until resumed.");
+            await logger.UpdateStatusAsync(novel.Id, NovelStatus.Paused);
             return Results.Ok(new { ok = true });
         });
 
@@ -324,57 +330,57 @@ public static class JobsEndpoints
         //   Canceled. The worker checks this before starting.
         // - Running/Paused: same DB flip, plus we signal the registered
         //   CTS so the in-flight LLM calls actually interrupt. Without
-        //   the signal a Running job would keep firing requests until
+        //   the signal a Running novel would keep firing requests until
         //   the chapter loop naturally exits.
         group.MapPost("/{id:guid}/cancel", async (
-            Guid id, HttpContext http, AppDbContext db, JobLogger logger,
-            JobCancellationRegistry cancelRegistry) =>
+            Guid id, HttpContext http, AppDbContext db, NovelEventLogger logger,
+            NovelCancellationRegistry cancelRegistry) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            if (job.Status is not (JobStatus.Queued or JobStatus.Running or JobStatus.Paused))
-                return Results.BadRequest(new { error = "Only queued, running, or paused jobs can be canceled." });
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            if (novel.Status is not (NovelStatus.Queued or NovelStatus.Running or NovelStatus.Paused))
+                return Results.BadRequest(new { error = "Only queued, running, or paused novels can be canceled." });
 
-            job.Status = JobStatus.Canceled;
-            job.CompletedAt ??= DateTimeOffset.UtcNow;
+            novel.Status = NovelStatus.Canceled;
+            novel.CompletedAt ??= DateTimeOffset.UtcNow;
             await db.SaveChangesAsync();
 
             cancelRegistry.Cancel(id); // best-effort: no-op if not running here
-            await logger.LogAsync(job.Id, "info", "Cancellation requested.");
-            await logger.UpdateStatusAsync(job.Id, JobStatus.Canceled);
+            await logger.LogAsync(novel.Id, "info", "Cancellation requested.");
+            await logger.UpdateStatusAsync(novel.Id, NovelStatus.Canceled);
             return Results.Ok(new { ok = true });
         });
 
-        group.MapPost("/{id:guid}/resume", async (Guid id, HttpContext http, AppDbContext db, JobLogger logger) =>
+        group.MapPost("/{id:guid}/resume", async (Guid id, HttpContext http, AppDbContext db, NovelEventLogger logger) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            if (job.Status != JobStatus.Paused) return Results.BadRequest(new { error = "Only paused jobs can be resumed." });
-            job.Status = JobStatus.Running;
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            if (novel.Status != NovelStatus.Paused) return Results.BadRequest(new { error = "Only paused novels can be resumed." });
+            novel.Status = NovelStatus.Running;
             await db.SaveChangesAsync();
-            await logger.LogAsync(job.Id, "info", "Resumed.");
-            await logger.UpdateStatusAsync(job.Id, JobStatus.Running);
+            await logger.LogAsync(novel.Id, "info", "Resumed.");
+            await logger.UpdateStatusAsync(novel.Id, NovelStatus.Running);
             return Results.Ok(new { ok = true });
         });
 
         group.MapDelete("/{id:guid}", async (
-            Guid id, HttpContext http, AppDbContext db, BookRepo repos) =>
+            Guid id, HttpContext http, AppDbContext db, NovelEditorRepo editorRepo) =>
         {
-            var job = await GetOwnedJobAsync(db, http, id);
-            if (job is null) return Results.NotFound();
-            if (File.Exists(job.InputStoragePath)) File.Delete(job.InputStoragePath);
-            if (job.OutputStoragePath is not null && File.Exists(job.OutputStoragePath))
-                File.Delete(job.OutputStoragePath);
+            var novel = await GetOwnedNovelAsync(db, http, id);
+            if (novel is null) return Results.NotFound();
+            if (File.Exists(novel.InputStoragePath)) File.Delete(novel.InputStoragePath);
+            if (novel.OutputStoragePath is not null && File.Exists(novel.OutputStoragePath))
+                File.Delete(novel.OutputStoragePath);
             // Editor repo lives outside the upload/output paths under the
-            // dedicated repo directory — clean it up too so the books
-            // folder doesn't grow stale per-job repos forever.
-            var repoPath = repos.PathFor(id);
+            // dedicated repo directory — clean it up too so the novels
+            // folder doesn't grow stale per-novel repos forever.
+            var repoPath = editorRepo.PathFor(id);
             if (Directory.Exists(repoPath))
             {
                 try { ForceDeleteDirectory(repoPath); }
                 catch { /* best-effort: leaks a directory but doesn't break delete */ }
             }
-            db.CleanJobs.Remove(job);
+            db.Novels.Remove(novel);
             await db.SaveChangesAsync();
             return Results.NoContent();
         });
@@ -392,24 +398,24 @@ public static class JobsEndpoints
     }
 
     /// <summary>
-    /// Collapse the stored CleanJob.Status onto the simpler set the UI
-    /// actually shows. The pill only ever needs to answer "is there something
-    /// for me to review?" — Completed/Failed/Canceled aren't surfaced because
-    /// the log panel already tells the user what happened.
+    /// Collapse the stored <see cref="NovelStatus"/> onto the simpler set the
+    /// UI actually shows. The pill only ever needs to answer "is there
+    /// something for me to review?" — Completed/Failed/Canceled aren't
+    /// surfaced because the log panel already tells the user what happened.
     /// </summary>
-    private static JobStatus DeriveDisplayStatus(CleanJob job, BookRepo bookRepo)
-        => DeriveListDisplayStatus(job.Status, job.RepoPath, bookRepo);
+    private static NovelStatus DeriveDisplayStatus(Novel novel, NovelEditorRepo editorRepo)
+        => DeriveListDisplayStatus(novel.Status, novel.RepoPath, editorRepo);
 
-    private static JobStatus DeriveListDisplayStatus(JobStatus raw, string? repoPath, BookRepo bookRepo)
+    private static NovelStatus DeriveListDisplayStatus(NovelStatus raw, string? repoPath, NovelEditorRepo editorRepo)
     {
         // Active states stay raw — the user wants to see live progress.
-        if (raw is JobStatus.Queued or JobStatus.Running or JobStatus.Paused)
+        if (raw is NovelStatus.Queued or NovelStatus.Running or NovelStatus.Paused)
             return raw;
         // Everything else folds into a single bit: are there uncommitted
         // changes to review? AwaitingReview if yes, Idle if no.
-        if (!string.IsNullOrEmpty(repoPath) && bookRepo.HasUncommittedChanges(repoPath))
-            return JobStatus.AwaitingReview;
-        return JobStatus.Idle;
+        if (!string.IsNullOrEmpty(repoPath) && editorRepo.HasUncommittedChanges(repoPath))
+            return NovelStatus.AwaitingReview;
+        return NovelStatus.Idle;
     }
 
     public sealed record PromptDto(string? SystemPrompt);
@@ -423,12 +429,12 @@ public static class JobsEndpoints
     private static Guid GetUserId(HttpContext http)
         => Guid.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
-    private static async Task<CleanJob?> GetOwnedJobAsync(AppDbContext db, HttpContext http, Guid id)
+    private static async Task<Novel?> GetOwnedNovelAsync(AppDbContext db, HttpContext http, Guid id)
     {
         var userId = GetUserId(http);
         var isAdmin = http.User.IsInRole(AppRoles.Admin);
         return isAdmin
-            ? await db.CleanJobs.FirstOrDefaultAsync(j => j.Id == id)
-            : await db.CleanJobs.FirstOrDefaultAsync(j => j.Id == id && j.UserId == userId);
+            ? await db.Novels.FirstOrDefaultAsync(n => n.Id == id)
+            : await db.Novels.FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
     }
 }

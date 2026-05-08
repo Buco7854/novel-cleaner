@@ -234,13 +234,13 @@ if (auth.Oidc.Enabled)
 builder.Services.AddAuthorization();
 
 // ----- App services -----------------------------------------------------
-builder.Services.AddSingleton<JobQueue>();
-builder.Services.AddSingleton<JobCancellationRegistry>();
+builder.Services.AddSingleton<NovelProcessingQueue>();
+builder.Services.AddSingleton<NovelCancellationRegistry>();
 builder.Services.AddScoped<UserProvisioningService>();
-builder.Services.AddScoped<JobLogger>();
-builder.Services.AddScoped<JobFinalizer>();
-builder.Services.AddSingleton<BookRepo>();
-builder.Services.AddScoped<BookImporter>();
+builder.Services.AddScoped<NovelEventLogger>();
+builder.Services.AddScoped<NovelFinalizer>();
+builder.Services.AddSingleton<NovelEditorRepo>();
+builder.Services.AddScoped<NovelImporter>();
 builder.Services.AddScoped<OpdsService>();
 builder.Services.AddHttpClient<OpenAiClient>();
 builder.Services.Configure<OpdsOptions>(builder.Configuration.GetSection("Opds"));
@@ -252,7 +252,7 @@ builder.Services.AddHttpClient("opds")
             opdsOptions.AllowPrivateNetworks));
 Directory.CreateDirectory(storage.KeysDirectory);
 builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(storage.KeysDirectory));
-builder.Services.AddHostedService<JobWorker>();
+builder.Services.AddHostedService<NovelProcessor>();
 
 builder.Services.AddSignalR();
 // No CORS by default — the SPA is served from the same origin as the API
@@ -330,12 +330,12 @@ app.Use(async (ctx, next) =>
 app.MapSetupEndpoints();
 app.MapAuthEndpoints();
 app.MapSettingsEndpoints();
-app.MapJobsEndpoints();
-app.MapReviewsEndpoints();
+app.MapNovelsEndpoints();
+app.MapNovelActionsEndpoints();
 app.MapPagesEndpoints();
 app.MapUsersEndpoints();
 app.MapOpdsEndpoints();
-app.MapHub<JobHub>("/hubs/novels");
+app.MapHub<NovelHub>("/hubs/novels");
 
 // SPA fallback — anything that didn't match an endpoint serves index.html
 app.MapFallbackToFile("/index.html");

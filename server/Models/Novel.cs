@@ -1,6 +1,6 @@
 namespace NovelCleaner.Server.Models;
 
-public enum JobStatus
+public enum NovelStatus
 {
     Queued,
     Running,
@@ -12,14 +12,19 @@ public enum JobStatus
     // rows would be misinterpreted if positions shifted.
     AwaitingReview,
     /// <summary>
-    /// Book uploaded but no AI run has been triggered yet. Editor is fully
+    /// Novel uploaded but no AI run has been triggered yet. Editor is fully
     /// usable (the repo is initialized at upload time); the user explicitly
     /// kicks off the AI from the editor toolbar when ready.
     /// </summary>
     Idle,
 }
 
-public class CleanJob
+/// <summary>
+/// A novel in a user's library — the unit of work the app revolves around.
+/// One row per uploaded EPUB; tracks the file on disk, the editor's git repo,
+/// the AI-run lifecycle, and the OPF metadata surfaced in the UI.
+/// </summary>
+public class Novel
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid UserId { get; set; }
@@ -39,7 +44,7 @@ public class CleanJob
     public string? Publisher   { get; set; }
     public string? Description { get; set; }
 
-    public JobStatus Status { get; set; } = JobStatus.Queued;
+    public NovelStatus Status { get; set; } = NovelStatus.Queued;
     public int MaxWorkers { get; set; } = 3;
     public string Model { get; set; } = "";
 
@@ -56,7 +61,7 @@ public class CleanJob
 
     /// <summary>
     /// Set by the "rerun AI" endpoint to ask the worker to re-run the LLM
-    /// identification pass against this same job — without cloning to a new
+    /// identification pass against this same novel — without cloning to a new
     /// file. The fresh suggestions land in the editor's working tree on top
     /// of HEAD so the user explicitly sees what was just found. Cleared by
     /// the worker at the start of every run.
@@ -72,10 +77,10 @@ public class CleanJob
     public string? PagesFilterJson { get; set; }
 
     /// <summary>
-    /// Path to the per-job git repository that backs the editor. One file
+    /// Path to the per-novel git repository that backs the editor. One file
     /// per page (visible-text projection), initial commit holds the
     /// untouched extraction. User edits and AI runs land in the working
-    /// tree; accept-hunk = commit; reject-hunk = checkout. Null on jobs
+    /// tree; accept-hunk = commit; reject-hunk = checkout. Null on novels
     /// created before the git-backed editor existed.
     /// </summary>
     public string? RepoPath { get; set; }
@@ -84,14 +89,18 @@ public class CleanJob
     public DateTimeOffset? StartedAt { get; set; }
     public DateTimeOffset? CompletedAt { get; set; }
 
-    public ICollection<JobLogEntry> Logs { get; set; } = [];
+    public ICollection<NovelLogEntry> Logs { get; set; } = [];
 }
 
-public class JobLogEntry
+/// <summary>
+/// One log line scoped to a single novel — surfaced live over SignalR and
+/// persisted so a refresh repopulates the editor's log panel.
+/// </summary>
+public class NovelLogEntry
 {
     public long Id { get; set; }
-    public Guid JobId { get; set; }
-    public CleanJob Job { get; set; } = default!;
+    public Guid NovelId { get; set; }
+    public Novel Novel { get; set; } = default!;
 
     public DateTimeOffset Timestamp { get; set; } = DateTimeOffset.UtcNow;
     public string Level { get; set; } = "info";

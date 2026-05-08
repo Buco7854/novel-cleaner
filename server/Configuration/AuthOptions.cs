@@ -122,7 +122,7 @@ public class StorageOptions
     public string UploadDirectory => Path.Combine(BooksDirectory, "uploads");
     public string OutputDirectory => Path.Combine(BooksDirectory, "outputs");
     /// <summary>
-    /// One git repo per book lives under here, named by job id. Backs the
+    /// One git repo per novel lives under here, named by novel id. Backs the
     /// page editor — file per page, commits as edit history.
     /// </summary>
     public string RepoDirectory   => Path.Combine(BooksDirectory, "repos");
